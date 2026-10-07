@@ -64,3 +64,9 @@ export const logout = (serverUrl: string, token: string) => call<void>(serverUrl
 
 export const changePassword = (serverUrl: string, token: string, currentPassword: string, newPassword: string) =>
   call<void>(serverUrl, "/me/password", { token, body: { currentPassword, newPassword } })
+
+/** A friendly message for a failed password check (change password, delete account). */
+export function passwordError(e: unknown): string {
+  if (e instanceof ApiError && e.code === "bad_credentials") return "That password isn't right."
+  return (e as Error).message
+}

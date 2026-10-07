@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { db } from "@/db/db"
-import { call } from "@/sync/api"
+import { call, passwordError } from "@/sync/api"
 import { getAccount } from "@/sync/engine"
 
 /** Deletes the account on the server (password required). This device keeps its data. */
@@ -14,21 +14,23 @@ export function DeleteAccount() {
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState("")
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
 
   const remove = async () => {
     const account = await getAccount()
     if (!account?.token) return
     setBusy(true)
+    setError("")
     try {
       await call(account.serverUrl, "/me", { method: "DELETE", token: account.token, body: { password } })
       await db.account.delete("account")
       setOpen(false)
+      setPassword("")
       toast("Account deleted. Your data is still on this device.")
     } catch (e) {
-      toast.error((e as Error).message)
+      setError(passwordError(e))
     } finally {
       setBusy(false)
-      setPassword("")
     }
   }
 
@@ -37,7 +39,16 @@ export function DeleteAccount() {
       <Button variant="destructive" onClick={() => setOpen(true)}>
         <UserXIcon /> Delete account…
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o)
+          if (!o) {
+            setPassword("")
+            setError("")
+          }
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete your account?</DialogTitle>
@@ -55,6 +66,7 @@ export function DeleteAccount() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button variant="destructive" className="mt-2" disabled={!password || busy} onClick={remove}>
               Delete account
             </Button>

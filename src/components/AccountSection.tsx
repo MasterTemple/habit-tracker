@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useSync } from "@/hooks/useSync"
 import { AccountEmail } from "./AccountEmail"
+import { ChangePassword } from "./ChangePassword"
 import { defaultServerUrl } from "@/sync/api"
 import { createAccount, signIn, signOut, syncNow } from "@/sync/engine"
 
@@ -45,6 +46,7 @@ export function AccountSection() {
         </p>
       )}
       <AccountEmail />
+      <ChangePassword />
       <div className="flex gap-2">
         <Button
           variant="outline"
