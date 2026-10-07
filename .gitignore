@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local sync server data
+*.db
+*.db-shm
+*.db-wal

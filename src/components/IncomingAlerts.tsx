@@ -34,10 +34,19 @@ export function IncomingAlerts() {
     }
   }, [signedIn])
 
-  if (!signedIn || !alerts?.length) return null
+  if (!signedIn) {
+    return <p className="mt-10 text-center text-sm text-muted-foreground">Sign in (Settings) to see alerts friends send you.</p>
+  }
+  if (!alerts) return null
+  if (alerts.length === 0) {
+    return (
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        No one sends you alerts yet. When a friend adds you to an accountability alert, it shows up here.
+      </p>
+    )
+  }
   return (
     <div className="grid gap-2">
-      <h2 className="text-sm font-semibold text-muted-foreground">Alerts you get</h2>
       {alerts.map((a) => (
         <ListRow
           key={`${a.fromUsername}:${a.what}:${a.updatedAt}`}
@@ -52,7 +61,6 @@ export function IncomingAlerts() {
           onClick={() => {}}
         />
       ))}
-      <h2 className="mt-2 text-sm font-semibold text-muted-foreground">Alerts you send</h2>
     </div>
   )
 }

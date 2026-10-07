@@ -1,10 +1,10 @@
-import { CheckIcon, EyeIcon, SearchIcon, UserPlusIcon, XIcon } from "lucide-react"
+import { CheckIcon, ClockIcon, EyeIcon, SearchIcon, UserPlusIcon, UsersIcon, XIcon } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { db } from "@/db/db"
 import { saveContact } from "@/db/repo"
-import { useAppData } from "@/hooks/useAppData"
 import { useNav } from "@/hooks/useNav"
 import { useSync } from "@/hooks/useSync"
 import { onSyncActivity } from "@/sync/engine"
@@ -24,7 +24,6 @@ import { ListRow } from "./layout"
 /** Finding people, friend requests, and who shares with you. Shown when signed in. */
 export function FriendsPanel({ onChange }: { onChange: (lists: FriendLists | null) => void }) {
   const signedIn = !!useSync()?.account?.token
-  const { contacts } = useAppData()
   const { view } = useNav()
   const [query, setQuery] = useState("")
   // Search results, tagged with the query they're for (so stale ones never show).
@@ -34,12 +33,16 @@ export function FriendsPanel({ onChange }: { onChange: (lists: FriendLists | nul
   const results = searchable && found.q === q ? found.people : []
   const [lists, setLists] = useState<FriendLists | null>(null)
   const [sharing, setSharing] = useState<SharingPerson[]>([])
+  // Bumped on each refresh, so search results (e.g. "Requested") update too.
+  const [version, setVersion] = useState(0)
 
   const refresh = useCallback(async () => {
     try {
       const [l, s] = await Promise.all([listFriends(), sharedWithMe()])
+      await addNewFriends(l)
       setLists(l)
       setSharing(s)
+      setVersion((v) => v + 1)
       onChange(l)
     } catch {
       onChange(null)
@@ -70,30 +73,13 @@ export function FriendsPanel({ onChange }: { onChange: (lists: FriendLists | nul
       250,
     )
     return () => clearTimeout(id)
-  }, [q, searchable])
-
-  /** Friends go in your contacts too, so you can pick them for sharing and alerts. */
-  const ensureContact = async (username: string, displayName: string) => {
-    if (contacts.some((c) => c.username.trim().replace(/^@/, "").toLowerCase() === username)) return
-    await saveContact({
-      name: displayName.trim() || username,
-      relationship: "friend",
-      username,
-      phone: "",
-      email: "",
-      telegram: "",
-      signal: "",
-      discordId: "",
-      notes: "",
-    })
-  }
+  }, [q, searchable, version])
 
   const act = async (fn: () => Promise<unknown>, done: string) => {
     try {
       await fn()
       toast.success(done)
       await refresh()
-      if (searchable) setFound({ q, people: await searchPeople(q).catch(() => []) })
     } catch (e) {
       toast.error((e as Error).message)
     }
@@ -137,10 +123,10 @@ export function FriendsPanel({ onChange }: { onChange: (lists: FriendLists | nul
               <Button
                 size="sm"
                 onClick={() =>
-                  act(async () => {
-                    await (p.relation === "incoming" ? acceptFriend(p.username) : requestFriend(p.username))
-                    await ensureContact(p.username, p.displayName)
-                  }, p.relation === "incoming" ? "You're now friends" : "Friend request sent")
+                  act(
+                    () => (p.relation === "incoming" ? acceptFriend(p.username) : requestFriend(p.username)),
+                    p.relation === "incoming" ? "You're now friends" : "Friend request sent",
+                  )
                 }
               >
                 {p.relation === "incoming" ? "Accept" : "Add friend"}
@@ -165,12 +151,7 @@ export function FriendsPanel({ onChange }: { onChange: (lists: FriendLists | nul
                   <Button
                     size="icon-lg"
                     aria-label={`Accept ${p.username}`}
-                    onClick={() =>
-                      act(async () => {
-                        await acceptFriend(p.username)
-                        await ensureContact(p.username, p.displayName)
-                      }, "You're now friends")
-                    }
+                    onClick={() => act(() => acceptFriend(p.username), "You're now friends")}
                   >
                     <CheckIcon />
                   </Button>
@@ -190,14 +171,41 @@ export function FriendsPanel({ onChange }: { onChange: (lists: FriendLists | nul
       )}
 
       {!!lists?.outgoing.length && (
-        <p className="text-xs text-muted-foreground">
-          Waiting for {lists.outgoing.map((p) => `@${p.username}`).join(", ")} to accept.
-        </p>
+        <div className="grid gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground">Pending</h2>
+          {lists.outgoing.map((p) => (
+            <ListRow
+              key={p.username}
+              icon={<ClockIcon className="size-4" />}
+              title={p.displayName || `@${p.username}`}
+              subtitle={p.displayName ? `@${p.username} · waiting for them to accept` : "Waiting for them to accept"}
+              onClick={() => {}}
+              trailing={
+                <Button size="sm" variant="outline" onClick={() => act(() => removeFriend(p.username), "Request canceled")}>
+                  Cancel
+                </Button>
+              }
+            />
+          ))}
+        </div>
       )}
 
       {sharing.length > 0 && (
         <div className="grid gap-2">
           <h2 className="text-sm font-semibold text-muted-foreground">Shared with you</h2>
+          {sharing.length > 1 && (
+            <ListRow
+              icon={<UsersIcon className="size-4" />}
+              title="Everyone"
+              subtitle={`All ${sharing.length} friends' shared tasks together`}
+              onClick={() => view({ kind: "everyone" })}
+              trailing={
+                <Button size="sm" variant="outline" onClick={() => view({ kind: "everyone" })}>
+                  View
+                </Button>
+              }
+            />
+          )}
           {sharing.map((p) => (
             <ListRow
               key={p.username}
@@ -216,4 +224,50 @@ export function FriendsPanel({ onChange }: { onChange: (lists: FriendLists | nul
       )}
     </div>
   )
+}
+
+const ADDED_KEY = "friends-added-to-contacts"
+
+/**
+ * New friends go in your contacts, so you can pick them for sharing and alerts. Each is
+ * added once (remembered on this device), so deleting the contact sticks; pending
+ * requests aren't added, so someone who declines never shows up in your people.
+ */
+function addNewFriends(lists: FriendLists): Promise<void> {
+  // One at a time: refreshes overlap (sync, focus, an accept), and each would add the same friend.
+  adding = adding.then(() => addMissing(lists)).catch(() => {})
+  return adding
+}
+let adding: Promise<void> = Promise.resolve()
+
+async function addMissing(lists: FriendLists) {
+  let added: string[] = []
+  try {
+    added = JSON.parse(localStorage.getItem(ADDED_KEY) ?? "[]")
+  } catch {
+    // Unavailable storage: add (missing) contacts every time instead.
+  }
+  const fresh = lists.friends.filter((f) => !added.includes(f.username))
+  if (fresh.length === 0) return
+  const contacts = await db.contacts.filter((c) => !c.deletedAt).toArray()
+  const has = (username: string) => contacts.some((c) => c.username.trim().replace(/^@/, "").toLowerCase() === username)
+  for (const f of fresh) {
+    if (has(f.username)) continue
+    await saveContact({
+      name: f.displayName.trim() || f.username,
+      relationship: "friend",
+      username: f.username,
+      phone: "",
+      email: "",
+      telegram: "",
+      signal: "",
+      discordId: "",
+      notes: "",
+    })
+  }
+  try {
+    localStorage.setItem(ADDED_KEY, JSON.stringify([...added, ...fresh.map((f) => f.username)]))
+  } catch {
+    // See above.
+  }
 }

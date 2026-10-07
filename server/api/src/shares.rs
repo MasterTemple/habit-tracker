@@ -16,6 +16,8 @@ use crate::AppState;
 use crate::auth::AuthUser;
 use crate::error::{ApiError, ApiResult};
 use crate::friends::are_friends;
+use crate::notifications::{Channel, Notice, notify};
+use crate::scheduler::set_state;
 use crate::userdata::{self, Scope, UserData};
 
 /// History included in a shared view.
@@ -31,6 +33,7 @@ pub fn router() -> Router<AppState> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ViewRule {
+    id: String,
     #[serde(default)]
     name: String,
     enabled: bool,
@@ -109,6 +112,79 @@ fn what(data: &UserData, rule: &ViewRule) -> String {
         )
         .collect();
     names.join(", ")
+}
+
+/// Users with view shares (or who had some), for [`announce`].
+pub async fn users_sharing(state: &AppState) -> ApiResult<Vec<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT DISTINCT user_id FROM sync_rows WHERE tbl = 'shares' AND deleted = 0
+           AND json_extract(data, '$.kind') = 'view'
+         UNION SELECT DISTINCT user_id FROM job_state WHERE key LIKE 'shares:view:%'",
+    )
+    .fetch_all(&state.db)
+    .await?)
+}
+
+/// Tells friends when a share starts including them (once per rule, until it stops).
+pub async fn announce(state: &AppState, user_id: &str) -> ApiResult<()> {
+    let data = userdata::load(&state.db, user_id).await?;
+    let previous: Vec<(String, String)> = sqlx::query_as(
+        "SELECT key, value FROM job_state WHERE user_id = ? AND key LIKE 'shares:view:%'",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+    let stamp = state.clock.now().timestamp_millis();
+    let actor = data.actor();
+    let mut seen = BTreeSet::new();
+    for rule in view_rules(&data) {
+        let key = format!("shares:view:{}", rule.id);
+        seen.insert(key.clone());
+        let before: Vec<String> = previous
+            .iter()
+            .find(|(k, _)| *k == key)
+            .and_then(|(_, v)| serde_json::from_str(v).ok())
+            .unwrap_or_default();
+        let recipients =
+            crate::alerts::recipients(state, user_id, &data, &rule.contact_ids).await?;
+        for r in recipients.iter().filter(|r| !before.contains(r)) {
+            notify(
+                state,
+                r,
+                Notice {
+                    kind: "share".into(),
+                    title: actor.clone(),
+                    body: format!(
+                        "{actor} shared {} with you. See it in Social → Friends.",
+                        what(&data, &rule)
+                    ),
+                    url: None,
+                    dedupe: format!("share:{}:{r}:{stamp}", rule.id),
+                    data: json!({ "from": data.username }),
+                },
+                &[Channel::Push],
+            )
+            .await?;
+        }
+        if recipients != before {
+            set_state(
+                state,
+                user_id,
+                &key,
+                &serde_json::to_string(&recipients).expect("serializable"),
+            )
+            .await?;
+        }
+    }
+    // Rules turned off or deleted: forget them, so turning one back on announces it again.
+    for (key, _) in previous.iter().filter(|(k, _)| !seen.contains(k)) {
+        sqlx::query("DELETE FROM job_state WHERE user_id = ? AND key = ?")
+            .bind(user_id)
+            .bind(key)
+            .execute(&state.db)
+            .await?;
+    }
+    Ok(())
 }
 
 /// People sharing tasks with the caller.

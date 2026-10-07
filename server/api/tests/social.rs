@@ -279,3 +279,53 @@ async fn unlisted_links_work_without_an_account_until_turned_off() {
         "turned off"
     );
 }
+
+#[tokio::test]
+async fn friends_hear_when_something_is_shared_with_them() {
+    let (app, blake, sam) = sharing_setup(vec![view_rule("v1", json!({}))]).await;
+    let shares = |inbox: &Value| -> Vec<String> {
+        inbox["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|i| i["kind"] == "share")
+            .map(|i| i["body"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let tick = || async { habit_api::scheduler::tick(&app.state).await.unwrap() };
+
+    // Not friends yet: nothing to see, so no notice.
+    tick().await;
+    assert!(shares(&app.get("/inbox", Some(&sam)).await.1).is_empty());
+
+    app.post("/friends/sam/request", Some(&blake), json!({}))
+        .await;
+    app.post("/friends/blake/accept", Some(&sam), json!({}))
+        .await;
+    tick().await;
+    tick().await;
+    assert_eq!(
+        shares(&app.get("/inbox", Some(&sam)).await.1),
+        ["@blake shared Exercise with you. See it in Social → Friends."],
+        "once"
+    );
+
+    // Off and on again: told again.
+    let toggle = |enabled: bool, at: &str| json!({ "cursor": 0, "changes": { "shares": [view_rule("v1", json!({ "enabled": enabled, "updatedAt": at }))] } });
+    app.post(
+        "/sync",
+        Some(&blake),
+        toggle(false, "2026-10-02T00:00:00.000Z"),
+    )
+    .await;
+    tick().await;
+    app.clock.advance(chrono::TimeDelta::seconds(1));
+    app.post(
+        "/sync",
+        Some(&blake),
+        toggle(true, "2026-10-03T00:00:00.000Z"),
+    )
+    .await;
+    tick().await;
+    assert_eq!(shares(&app.get("/inbox", Some(&sam)).await.1).len(), 2);
+}

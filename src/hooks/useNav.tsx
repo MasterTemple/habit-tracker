@@ -10,8 +10,11 @@ export const VIEWS = [
 
 export type PageId = (typeof VIEWS)[number]["page"]
 
-/** Looking at someone else's shared tasks instead of your own pages. */
-export type Viewing = { kind: "friend"; username: string } | { kind: "link"; serverUrl: string; token: string }
+/** Looking at someone else's shared tasks (or every friend's) instead of your own pages. */
+export type Viewing =
+  | { kind: "friend"; username: string }
+  | { kind: "everyone" }
+  | { kind: "link"; serverUrl: string; token: string }
 
 interface Nav {
   page: PageId

@@ -20,6 +20,19 @@ export function PinnedTabs({ tabs, children }: { tabs: { value: string; label: s
   )
 }
 
+/** Tabs within a tab (e.g. Sending / Receiving), lighter than the pinned ones. */
+export function SubTabs({ tabs }: { tabs: { value: string; label: string }[] }) {
+  return (
+    <TabsList variant="line" className="mb-3 w-full">
+      {tabs.map((t) => (
+        <TabsTrigger key={t.value} value={t.value}>
+          {t.label}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+  )
+}
+
 /** A bottom action that stays just above the nav bar when the list is long, so it never needs scrolling to. */
 export function BottomAction({ children }: { children: React.ReactNode }) {
   return (

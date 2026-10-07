@@ -292,7 +292,7 @@ fn parse<T: for<'de> Deserialize<'de>>(rows: &[Value], kind: &str) -> Vec<T> {
 
 /// Account ids of a rule's recipients: its contacts who have accounts here and are
 /// accepted friends (so knowing a username isn't enough to send someone alerts).
-async fn recipients(
+pub(crate) async fn recipients(
     state: &AppState,
     owner: &str,
     data: &UserData,

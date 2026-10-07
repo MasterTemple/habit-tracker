@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The server (and its database, rewritten on every request) has no class names; watching it reloads the app. */
+@source not "../server";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";

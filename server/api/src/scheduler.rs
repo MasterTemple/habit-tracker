@@ -63,6 +63,11 @@ pub async fn tick(state: &AppState) -> ApiResult<()> {
             tracing::error!(error = %e, user = %user_id, "alerts failed");
         }
     }
+    for user_id in crate::shares::users_sharing(state).await? {
+        if let Err(e) = crate::shares::announce(state, &user_id).await {
+            tracing::error!(error = %e, user = %user_id, "share announcements failed");
+        }
+    }
     Ok(())
 }
 

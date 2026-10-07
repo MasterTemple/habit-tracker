@@ -4,7 +4,7 @@ import { ContactEditor, type ContactTarget } from "@/components/ContactEditor"
 import { IncomingAlerts } from "@/components/IncomingAlerts"
 import { FriendsPanel } from "@/components/FriendsPanel"
 import { InboxList } from "@/components/InboxList"
-import { BottomAction, ListRow, PinnedTabs, ServerNote } from "@/components/layout"
+import { BottomAction, ListRow, PinnedTabs, ServerNote, SubTabs } from "@/components/layout"
 import { ShareEditor, type ShareTarget } from "@/components/ShareEditor"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -50,13 +50,25 @@ export function SocialPage() {
         />
       </TabsContent>
       <TabsContent value="accountability">
-        <IncomingAlerts />
-        <ShareList
-          kind="notify"
-          note="Alerts are sent by your sync server while you're signed in. A friend gets them in their inbox (and as notifications) when their username here is set on them in Friends."
-          empty="No alerts. Tell someone when you make progress, finish a goal, or miss one."
-          onEdit={setShare}
-        />
+        <Tabs defaultValue="sending">
+          <SubTabs
+            tabs={[
+              { value: "sending", label: "Sending" },
+              { value: "receiving", label: "Receiving" },
+            ]}
+          />
+          <TabsContent value="sending">
+            <ShareList
+              kind="notify"
+              note="Alerts are sent by your sync server while you're signed in. A friend gets them in their inbox (and as notifications) when their username here is set on them in Friends."
+              empty="No alerts. Tell someone when you make progress, finish a goal, or miss one."
+              onEdit={setShare}
+            />
+          </TabsContent>
+          <TabsContent value="receiving">
+            <IncomingAlerts />
+          </TabsContent>
+        </Tabs>
       </TabsContent>
       <ContactEditor target={contact} onClose={() => setContact(null)} />
       <ShareEditor target={share} onClose={() => setShare(null)} />
