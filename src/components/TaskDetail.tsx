@@ -21,6 +21,8 @@ interface Props {
   onClose: () => void
   onEdit: (taskId: string) => void
   onTakeBreak: (taskId: string) => void
+  /** Shows all breaks (when several cover this task today). */
+  onViewBreaks: () => void
   onEditBreak: (breakId: string) => void
 }
 
@@ -46,6 +48,7 @@ function Detail({
   today,
   onEdit,
   onTakeBreak,
+  onViewBreaks,
   onEditBreak,
 }: { view: TaskView; today: string } & Omit<Props, "view" | "today" | "onClose">) {
   const { categories, tasks, settings } = useAppData()
@@ -59,6 +62,8 @@ function Detail({
   }
 
   const taskExceptions = ctx.exceptions.filter((e) => e.endDate >= today)
+  // Already on break today: offer to view the break(s) instead of starting another.
+  const currentBreaks = taskExceptions.filter((e) => e.startDate <= today)
 
   return (
     <>
@@ -85,8 +90,19 @@ function Detail({
           <Button variant="outline" className="flex-1" onClick={() => onEdit(task.id)}>
             <PencilIcon /> Edit
           </Button>
-          <Button variant="outline" className="flex-1" onClick={() => onTakeBreak(task.id)}>
-            <TreePalmIcon /> Take a break
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() =>
+              currentBreaks.length === 0
+                ? onTakeBreak(task.id)
+                : currentBreaks.length === 1
+                  ? onEditBreak(currentBreaks[0].id)
+                  : onViewBreaks()
+            }
+          >
+            <TreePalmIcon />{" "}
+            {currentBreaks.length === 0 ? "Take a break" : currentBreaks.length === 1 ? "View break" : "View breaks"}
           </Button>
         </div>
 

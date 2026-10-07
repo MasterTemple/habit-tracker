@@ -14,7 +14,7 @@ import { reorderTask } from "@/db/repo"
 import { seedExamples } from "@/db/seed"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
-import { useViewTab } from "@/hooks/useNav"
+import { useNav, useViewTab } from "@/hooks/useNav"
 import { UNCATEGORIZED } from "@/lib/filters"
 import { cn } from "@/lib/utils"
 
@@ -68,6 +68,7 @@ interface TaskListProps {
 function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
   const { tasks, categories, today, settings } = useAppData()
   const { openTask, openBreak } = useEditors()
+  const { setPage, setTab } = useNav()
   const [showRetired, setShowRetired] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [amountId, setAmountId] = useState<string | null>(null)
@@ -163,6 +164,11 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
         onEdit={(taskId) => {
           setDetailId(null)
           openTask({ mode: "edit", taskId })
+        }}
+        onViewBreaks={() => {
+          setDetailId(null)
+          setTab("schedule", "breaks")
+          setPage("schedule")
         }}
         onTakeBreak={(taskId) => {
           setDetailId(null)
