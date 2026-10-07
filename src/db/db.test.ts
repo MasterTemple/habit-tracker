@@ -37,3 +37,17 @@ it("upgrades v2 rows with defaults for units and category icons", async () => {
   expect((await db.categories.get("c"))?.icon).toBe("")
   db.close()
 })
+
+it("upgrades v4 entries with a local time derived from their timestamp", async () => {
+  const old = new Dexie("upgrade-v5")
+  old.version(4).stores({ tasks: "id, sortOrder, updatedAt", events: "id, taskId, localDate, [taskId+localDate], updatedAt" })
+  const occurredAt = new Date(2026, 9, 6, 8, 45).toISOString()
+  await old.table("events").add({ id: "e", taskId: "t", amount: 1, occurredAt, localDate: "2026-10-06", updatedAt: "" })
+  await old.table("tasks").add({ id: "t", name: "Run", sortOrder: 0, updatedAt: "" })
+  old.close()
+
+  const db = new HabitDB("upgrade-v5")
+  expect(await db.events.get("e")).toMatchObject({ localTime: "08:45", timeZone: "" })
+  expect((await db.tasks.get("t"))?.dueTime).toBeNull()
+  db.close()
+})

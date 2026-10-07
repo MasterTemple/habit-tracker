@@ -1,5 +1,5 @@
 import { Dexie, type EntityTable, type Table } from "dexie"
-import { isExceptionV1, migrateExceptionV1 } from "./migrations"
+import { isExceptionV1, legacyEventTime, migrateExceptionV1 } from "./migrations"
 import type {
   Automation,
   Category,
@@ -65,6 +65,15 @@ export class HabitDB extends Dexie {
       automations: "id, kind, updatedAt",
       contacts: "id, updatedAt",
       shares: "id, kind, updatedAt",
+    })
+    // v5: due times on tasks; wall-clock time and zone on entries.
+    this.version(5).upgrade(async (tx) => {
+      await tx.table("tasks").toCollection().modify((t) => {
+        t.dueTime ??= null
+      })
+      await tx.table("events").toCollection().modify((e) => {
+        Object.assign(e, legacyEventTime(e))
+      })
     })
   }
 }

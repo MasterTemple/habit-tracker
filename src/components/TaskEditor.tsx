@@ -60,6 +60,7 @@ function emptyInput(carryOver: boolean): TaskInput {
     icon: "circle",
     color: COLORS[5],
     unit: "",
+    dueTime: null,
     incrementAmounts: [1],
     displayMode: "period",
     period: "day",
@@ -267,6 +268,31 @@ export function TaskEditor({ target, onClose }: Props) {
                       " Goal changes apply from the start of the current period; earlier history keeps the old goal."}
                   </p>
                 </div>
+
+                {input.type === "accumulate" && (
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="task-due">Due by</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="task-due"
+                        type="time"
+                        className="block w-36 min-w-0 appearance-none"
+                        value={input.dueTime ?? ""}
+                        onChange={(e) => set({ dueTime: e.target.value || null })}
+                      />
+                      {input.dueTime && (
+                        <Button variant="ghost" onClick={() => set({ dueTime: null })}>
+                          No due time
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Optional. Local time wherever you are, like an alarm
+                      {input.period !== "day" && `, on the ${input.period}'s last day`}. Finishing late still counts, but
+                      shows as late.
+                    </p>
+                  </div>
+                )}
 
                 {input.type !== "track" && (
                   <>

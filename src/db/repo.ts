@@ -1,6 +1,6 @@
 // All writes go through here so components never touch tables directly.
 import { v7 as uuid } from "uuid"
-import { periodRange, toLocalDate, type DateRange } from "@/domain/dates"
+import { periodRange, toLocalDate, toLocalTime, type DateRange } from "@/domain/dates"
 import { currentTarget } from "@/domain/status"
 import {
   DEFAULT_SETTINGS,
@@ -18,9 +18,17 @@ import {
 } from "@/domain/types"
 import type { EntityTable } from "dexie"
 import { db } from "./db"
-import { isExceptionV1, migrateExceptionV1 } from "./migrations"
+import { isExceptionV1, legacyEventTime, migrateExceptionV1 } from "./migrations"
 
 const now = () => new Date().toISOString()
+
+function currentTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? ""
+  } catch {
+    return ""
+  }
+}
 
 function today(settings: Settings) {
   return toLocalDate(new Date(), settings.dayStartHour)
@@ -47,6 +55,8 @@ export interface TaskInput {
   icon: string
   color: string
   unit: string
+  /** "HH:MM" or null; only used by "Do" tasks. */
+  dueTime: string | null
   incrementAmounts: number[]
   displayMode: DisplayMode
   /** For track tasks, only the period is used. */
@@ -87,6 +97,7 @@ export async function createTask(input: TaskInput, createdFromId: string | null 
       icon: input.icon,
       color: input.color,
       unit: input.unit.trim(),
+      dueTime: input.type === "accumulate" ? input.dueTime : null,
       incrementAmounts: input.incrementAmounts,
       displayMode: input.displayMode,
       sortOrder: await nextSortOrder(),
@@ -119,6 +130,7 @@ export async function updateTask(id: string, input: TaskInput) {
       icon: input.icon,
       color: input.color,
       unit: input.unit.trim(),
+      dueTime: task.type === "accumulate" ? input.dueTime : null,
       incrementAmounts: input.incrementAmounts,
       displayMode: input.displayMode,
       updatedAt: now(),
@@ -187,6 +199,7 @@ export async function taskToInput(id: string): Promise<TaskInput> {
     icon: task.icon,
     color: task.color,
     unit: task.unit ?? "",
+    dueTime: task.dueTime ?? null,
     incrementAmounts: task.incrementAmounts,
     displayMode: task.displayMode,
     period: target?.period ?? "day",
@@ -246,7 +259,10 @@ export async function recordEvent(taskId: string, amount: number, note = ""): Pr
     taskId,
     amount,
     occurredAt: moment.toISOString(),
+    // Wall-clock date and time where the user is now, fixed so travel doesn't move them.
     localDate: toLocalDate(moment, settings.dayStartHour),
+    localTime: toLocalTime(moment),
+    timeZone: currentTimeZone(),
     note,
     createdAt: now(),
     updatedAt: now(),
@@ -421,7 +437,7 @@ export async function resetAll() {
 
 // ---------- export / import ----------
 
-export const EXPORT_VERSION = 4
+export const EXPORT_VERSION = 5
 
 export async function exportData() {
   return {
@@ -445,12 +461,13 @@ export type ExportData = Awaited<ReturnType<typeof exportData>>
 
 /** Brings rows from older exports up to the current shape. */
 function normalizeExport(data: ExportData): ExportData {
-  if (data?.app !== "habit-tracker" || ![1, 2, 3, EXPORT_VERSION].includes(data.version)) {
+  if (data?.app !== "habit-tracker" || ![1, 2, 3, 4, EXPORT_VERSION].includes(data.version)) {
     throw new Error("Not a habit-tracker export, or from an unsupported version")
   }
   return {
     ...data,
-    tasks: data.tasks.map((t) => ({ ...t, unit: t.unit ?? "" })),
+    tasks: data.tasks.map((t) => ({ ...t, unit: t.unit ?? "", dueTime: t.dueTime ?? null })),
+    events: data.events.map((e) => ({ ...e, ...legacyEventTime(e) })),
     categories: data.categories.map((c) => ({ ...c, icon: c.icon ?? "" })),
     exceptions: data.exceptions.map((e) => (isExceptionV1(e) ? migrateExceptionV1(e) : e)),
     // Added in v4.
@@ -547,7 +564,7 @@ export async function importTemplate(template: Template): Promise<{ tasks: numbe
   }
   for (const { categoryKeys, ...task } of template.tasks) {
     const categoryIds = categoryKeys.map((k) => idByKey.get(k)).filter((id): id is string => !!id)
-    await createTask({ ...task, unit: task.unit ?? "", categoryIds })
+    await createTask({ ...task, unit: task.unit ?? "", dueTime: task.dueTime ?? null, categoryIds })
   }
   return { tasks: template.tasks.length, categories: createdCategories }
 }

@@ -9,6 +9,7 @@ import { deleteEvent, restoreEvent } from "@/db/repo"
 import { formatRange, inRange } from "@/domain/dates"
 import { periodHistory, type PeriodStatus } from "@/domain/status"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
+import { formatTime } from "@/domain/schedule"
 import { breakDates, breakScopeNames } from "@/lib/breaks"
 import { goalText, progressPercent, statusText } from "@/lib/format"
 import { BOTTOM_SHEET } from "@/lib/viewport"
@@ -165,6 +166,17 @@ function Detail({
                 </button>
                 {open && (
                   <div className="border-t px-3 py-1.5 text-sm">
+                    {status.deadline && status.deadline.state !== "pending" && (
+                      <p
+                        className={cn(
+                          "py-1 text-xs",
+                          status.deadline.state === "on_time" ? "text-muted-foreground" : "text-destructive",
+                        )}
+                      >
+                        {{ on_time: "Done on time", late: "Done after the due time", missed: "Missed the due time" }[status.deadline.state]}{" "}
+                        ({formatTime(status.deadline.time)})
+                      </p>
+                    )}
                     {status.carried > 0 && (
                       <p className="py-1 text-xs text-muted-foreground">Goal adjusted by {status.carried} carried over.</p>
                     )}

@@ -80,6 +80,7 @@ export function DailyOverview({ tasks, filter }: Props) {
         {o.counted > 0 && (
           <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
             {o.remaining > 0 && <span>{o.remaining} to go</span>}
+            {o.overdue > 0 && <span className="font-medium text-destructive">{o.overdue} overdue</span>}
             {o.over > 0 && <span className="font-medium text-destructive">{o.over} over limit</span>}
             {o.excused > 0 && <span>{o.excused} on break</span>}
             {o.remaining === 0 && o.over === 0 && <span>All done 🎉</span>}

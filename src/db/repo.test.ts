@@ -38,6 +38,7 @@ const input: TaskInput = {
   icon: "dumbbell",
   color: "#ef4444",
   unit: "",
+  dueTime: null,
   incrementAmounts: [1, 5, 10],
   displayMode: "period",
   period: "day",
@@ -285,5 +286,31 @@ describe("repo", () => {
     // A v3 file without the new tables still imports.
     await importData({ ...data, version: 3, automations: undefined, contacts: undefined, shares: undefined })
     expect(await db.contacts.count()).toBe(0)
+  })
+
+  it("records the wall-clock time and zone with each entry, and keeps due times", async () => {
+    const id = await createTask({ ...input, dueTime: "09:00" })
+    const eventId = await recordEvent(id, 1)
+    const e = await db.events.get(eventId)
+    expect(e?.localTime).toMatch(/^\d\d:\d\d$/)
+    expect(e?.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
+    expect((await taskToInput(id)).dueTime).toBe("09:00")
+    // Only "Do" tasks keep a due time.
+    const limit = await createTask({ ...input, type: "limit", dueTime: "09:00" })
+    expect((await db.tasks.get(limit))?.dueTime).toBeNull()
+  })
+
+  it("fills in local times when importing older exports", async () => {
+    const id = await createTask(input)
+    await recordEvent(id, 1)
+    const data = JSON.parse(JSON.stringify(await exportData()))
+    delete data.events[0].localTime
+    delete data.events[0].timeZone
+    delete data.tasks[0].dueTime
+    await importData({ ...data, version: 4 })
+    const [e] = await db.events.toArray()
+    expect(e.localTime).toMatch(/^\d\d:\d\d$/)
+    expect(e.timeZone).toBe("")
+    expect((await db.tasks.get(id))?.dueTime).toBeNull()
   })
 })

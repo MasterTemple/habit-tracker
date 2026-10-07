@@ -1,3 +1,6 @@
+import { format } from "date-fns"
+import { parseLocalDate } from "@/domain/dates"
+import { formatTime } from "@/domain/schedule"
 import type { PeriodStatus, TaskSummary } from "@/domain/status"
 import type { Period, Settings, Task } from "@/domain/types"
 
@@ -43,7 +46,34 @@ export function goalText(task: Task, status: PeriodStatus): string {
   if (task.type === "track" || !status.target) return task.unit ? `Counting ${units(task.unit, 2)} per ${per}` : `Counting per ${per}`
   const { amount } = status.target
   if (task.type === "limit") return amount === 0 ? `Never (per ${per})` : `At most ${count(amount, task.unit)} per ${per}`
-  return `At least ${count(amount, task.unit)} per ${per}`
+  const by = !task.dueTime
+    ? ""
+    : status.period === "day"
+      ? `, by ${formatTime(task.dueTime)}`
+      : `, by ${formatTime(task.dueTime)} on the ${per}'s last day`
+  return `At least ${count(amount, task.unit)} per ${per}${by}`
+}
+
+/** When a deadline falls: "9:00 AM" for daily goals, "Sat 6:00 PM" or "Oct 31, 6:00 PM" otherwise. */
+function deadlineWhen(status: PeriodStatus): string {
+  const { date, time } = status.deadline!
+  const day = parseLocalDate(date)
+  if (status.period === "day") return formatTime(time)
+  return `${format(day, status.period === "week" ? "EEE" : "MMM d,")} ${formatTime(time)}`
+}
+
+/** Short deadline note for the card, or null when there's nothing worth saying. */
+export function deadlineText(status: PeriodStatus): string | null {
+  switch (status.deadline?.state) {
+    case "pending":
+      return `Due ${deadlineWhen(status)}`
+    case "missed":
+      return `Was due ${deadlineWhen(status)}`
+    case "late":
+      return "Done late"
+    default:
+      return null
+  }
 }
 
 /** Number shown on the card, according to the task's display mode. */
@@ -72,6 +102,7 @@ export function statusText(task: Task, status: PeriodStatus, limitDisplay: Limit
   if (task.type === "track") return ""
   if (status.goal === null) return ""
   if (task.type === "accumulate") {
+    if (status.deadline?.state === "missed") return `Overdue · ${status.goal - status.actual} left`
     if (status.actual > status.goal) return `Done +${status.actual - status.goal}`
     if (status.state === "success") return "Done"
     return `${status.goal - status.actual} left`

@@ -10,7 +10,7 @@ import {
   startOfWeek,
   subHours,
 } from "date-fns"
-import type { LocalDate, Period, WeekStart } from "./types"
+import type { LocalDate, LocalTime, Period, WeekStart } from "./types"
 
 export interface DateRange {
   start: LocalDate
@@ -30,6 +30,19 @@ export function parseLocalDate(date: LocalDate): Date {
 /** The day a moment counts toward, shifting early-morning hours back when dayStartHour > 0. */
 export function toLocalDate(moment: Date, dayStartHour = 0): LocalDate {
   return formatLocalDate(subHours(moment, dayStartHour))
+}
+
+export function toLocalTime(moment: Date): LocalTime {
+  return format(moment, "HH:mm")
+}
+
+/**
+ * Minutes since the day began, where the day begins at dayStartHour. So with a 3 AM
+ * day start, 01:00 is late in the day (1320), not early.
+ */
+export function minutesIntoDay(time: LocalTime, dayStartHour = 0): number {
+  const [h, m] = time.split(":").map(Number)
+  return (h * 60 + m - dayStartHour * 60 + 24 * 60) % (24 * 60)
 }
 
 export function addDays(date: LocalDate, days: number): LocalDate {

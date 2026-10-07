@@ -1,6 +1,7 @@
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  ClockIcon,
   CopyIcon,
   CopyPlusIcon,
   EllipsisVerticalIcon,
@@ -30,7 +31,7 @@ import { inRange } from "@/domain/dates"
 import { isCheckbox, isExcused } from "@/domain/status"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
-import { displayValue, progressPercent, statusText } from "@/lib/format"
+import { deadlineText, displayValue, progressPercent, statusText } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { TaskIcon } from "./TaskIcon"
 import { CategoryChip } from "./CategoryChip"
@@ -53,9 +54,10 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
   const { current } = summary
   const retired = !!task.retiredAt
   const checkbox = isCheckbox(task, target)
-  const failed = current.state === "failure"
+  const failed = current.state === "failure" || current.deadline?.state === "missed"
   const negative = current.actual < 0
   const onBreak = isExcused(today, ctx.exceptions)
+  const due = retired ? null : deadlineText(current)
 
   // A limit counts down your allowance, so its buttons read −N (use some).
   const isLimit = task.type === "limit"
@@ -113,7 +115,7 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
               </div>
             )}
             <div className="truncate font-medium">{task.name}</div>
-            {(summary.streak > 1 || onBreak) && (
+            {(summary.streak > 1 || onBreak || due) && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {summary.streak > 1 && (
                   <span className="flex items-center gap-0.5">
@@ -125,6 +127,17 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
                   <span className="flex items-center gap-0.5">
                     <TreePalmIcon className="size-3" />
                     On break
+                  </span>
+                )}
+                {due && (
+                  <span
+                    className={cn(
+                      "flex items-center gap-0.5 whitespace-nowrap",
+                      current.deadline?.state === "missed" && "font-medium text-destructive",
+                    )}
+                  >
+                    <ClockIcon className="size-3" />
+                    {due}
                   </span>
                 )}
               </div>

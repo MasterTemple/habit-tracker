@@ -47,7 +47,8 @@ Progress is never stored; it's derived from append-only **events** (`+10 at 09:0
   *Copy & retire* (both link the copy via `createdFromId`).
 - **targets**: versioned goals (track tasks have one too, only for their period) (`period`, `amount`, `carryOver`, `effectiveFrom`). The version in effect at a
   period's start governs that period. Editing a goal creates a version starting at the current period.
-- **events**: amounts (negative for corrections) with a fixed `localDate`; soft-deleted for undo.
+- **events**: amounts (negative for corrections) with a fixed `localDate` and `localTime` (wall clock when
+  recorded, plus the IANA `timeZone`); soft-deleted for undo.
 - **categories** / **taskCategories**: many-to-many; priorities are just categories. List order is priority:
   a new task takes the default icon of its highest-priority category.
 - **exceptions** ("breaks"): cover all tasks, or any mix of tasks and categories.
@@ -67,6 +68,11 @@ Progress is never stored; it's derived from append-only **events** (`+10 at 09:0
   Limit goals stay the same, but entries on break days don't count.
 - **Carry-over** (per task, one period back only): accumulate surplus lowers the next goal; limit overage lowers
   the next allowance. Unused limit allowance does not roll forward.
+- **Due times** ("Do" tasks): wall-clock, like an alarm: 9:00 means 9:00 wherever you are. Weekly/monthly goals
+  are due on the period's last day. Entries are compared by their recorded `localDate`/`localTime` and "now" by
+  the current wall clock, so traveling never re-times past entries. Times are measured from the day-start hour,
+  so a 1 AM entry with a 3 AM day start counts as late in the day. Finishing after the due time still meets the
+  goal but shows as late; "overdue" means the deadline passed with the goal unmet.
 - **Undo:** the card's undo button deletes the newest entry in the current period, whichever button made it
   (with Redo in the toast). Corrections that should stay in the history go through *Custom amount*.
 - **Streaks:** consecutive successful periods; the current open period and excused periods don't break it.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { endOfDuration, periodRange, toLocalDate } from "./dates"
+import { endOfDuration, minutesIntoDay, periodRange, toLocalDate } from "./dates"
 import { exceptionsForTask, overview, periodHistory, periodStatus, streak, summarize, targetFor, type TaskContext } from "./status"
 import {
   DEFAULT_SETTINGS,
@@ -23,6 +23,7 @@ function task(type: TaskType, createdAt = "2026-01-01T12:00:00"): Task {
     icon: "circle",
     color: "#000",
     unit: "",
+    dueTime: null,
     sortOrder: 0,
     incrementAmounts: [1],
     displayMode: "period",
@@ -47,13 +48,15 @@ function target(period: Period, amount: number, opts: Partial<TaskTarget> = {}):
 }
 
 let eventId = 0
-function ev(localDate: string, amount = 1, deleted = false): TaskEvent {
+function ev(localDate: string, amount = 1, deleted = false, localTime = "12:00"): TaskEvent {
   return {
     id: `e${eventId++}`,
     taskId: "t1",
     amount,
     occurredAt: `${localDate}T12:00:00Z`,
     localDate,
+    localTime,
+    timeZone: "",
     note: "",
     createdAt: "",
     updatedAt: "",
@@ -85,6 +88,12 @@ describe("dates", () => {
     const lateNight = new Date(2026, 9, 7, 1, 30)
     expect(toLocalDate(lateNight, 0)).toBe("2026-10-07")
     expect(toLocalDate(lateNight, 3)).toBe("2026-10-06")
+  })
+
+  it("counts minutes from the configured start of day", () => {
+    expect(minutesIntoDay("09:00")).toBe(540)
+    expect(minutesIntoDay("01:00", 3)).toBe(22 * 60)
+    expect(minutesIntoDay("03:00", 3)).toBe(0)
   })
 
   it("computes inclusive end dates for durations", () => {
@@ -312,7 +321,7 @@ describe("summarize / history", () => {
 describe("overview", () => {
   const status = (type: TaskType, goal: number | null, actual: number, state: "open" | "success" | "failure" | "excused") => ({
     task: task(type),
-    current: { period: "day" as const, range: { start: TODAY, end: TODAY }, target: null, goal, carried: 0, actual, excusedDays: 0, state },
+    current: { period: "day" as const, range: { start: TODAY, end: TODAY }, target: null, goal, carried: 0, actual, excusedDays: 0, state, deadline: null },
   })
 
   it("averages accumulate fractions and counts limits within their allowance as done", () => {
@@ -324,10 +333,72 @@ describe("overview", () => {
       status("track", null, 1, "success"),
       status("accumulate", 0, 0, "excused"),
     ])
-    expect(o).toEqual({ progress: (0.5 + 1 + 1 + 0) / 4, done: 2, remaining: 1, over: 1, counted: 4, excused: 1 })
+    expect(o).toEqual({ progress: (0.5 + 1 + 1 + 0) / 4, done: 2, remaining: 1, over: 1, counted: 4, excused: 1, overdue: 0 })
   })
 
   it("does not let negative totals subtract from overall progress", () => {
     expect(overview([status("accumulate", 10, -5, "open")]).progress).toBe(0)
+  })
+})
+
+describe("due times", () => {
+  const due = (time: string, extra: Partial<TaskContext> = {}) =>
+    ctx({ task: { ...task("accumulate"), dueTime: time }, targets: [target("day", 1)], ...extra })
+
+  it("is pending before the deadline and missed after it", () => {
+    expect(periodStatus(due("09:00", { now: "08:30" }), TODAY, TODAY).deadline?.state).toBe("pending")
+    expect(periodStatus(due("09:00", { now: "09:30" }), TODAY, TODAY).deadline?.state).toBe("missed")
+    // Without a known current time, today's deadline isn't treated as passed.
+    expect(periodStatus(due("09:00"), TODAY, TODAY).deadline?.state).toBe("pending")
+  })
+
+  it("is on time when entries before the due time meet the goal", () => {
+    const c = due("09:00", { now: "10:00", events: [ev(TODAY, 1, false, "08:45")] })
+    expect(periodStatus(c, TODAY, TODAY).deadline?.state).toBe("on_time")
+  })
+
+  it("is late when the goal is only met after the due time, without failing the goal", () => {
+    const c = due("09:00", { now: "10:00", events: [ev(TODAY, 1, false, "09:15")] })
+    const s = periodStatus(c, TODAY, TODAY)
+    expect(s.deadline?.state).toBe("late")
+    expect(s.state).toBe("success")
+  })
+
+  it("marks past periods missed or late regardless of the current time", () => {
+    expect(periodStatus(due("09:00", { now: "00:01" }), "2026-10-05", TODAY).deadline?.state).toBe("missed")
+    const c = due("09:00", { now: "00:01", events: [ev("2026-10-05", 1, false, "21:00")] })
+    expect(periodStatus(c, "2026-10-05", TODAY).deadline?.state).toBe("late")
+  })
+
+  it("uses wall-clock times as recorded, so changing time zones doesn't re-time entries", () => {
+    // Logged at 08:30 local (e.g. in New York); the stored localTime stays 08:30 after flying to LA.
+    const c = due("09:00", { now: "07:00", events: [{ ...ev(TODAY, 1, false, "08:30"), occurredAt: `${TODAY}T12:30:00Z`, timeZone: "America/New_York" }] })
+    expect(periodStatus(c, TODAY, TODAY).deadline?.state).toBe("on_time")
+  })
+
+  it("treats late-night entries as the end of the day when the day starts later", () => {
+    const settings = { ...DEFAULT_SETTINGS, dayStartHour: 3 }
+    // Due 23:00; an entry at 01:00 (still "today" until 3 AM) is after the deadline, not before.
+    const late = due("23:00", { settings, now: "02:00", events: [ev(TODAY, 1, false, "01:00")] })
+    expect(periodStatus(late, TODAY, TODAY).deadline?.state).toBe("late")
+    // Due 02:00 (late night); 01:30 is before it, and at 23:00 the deadline hasn't passed yet.
+    expect(periodStatus(due("02:00", { settings, now: "01:30" }), TODAY, TODAY).deadline?.state).toBe("pending")
+    expect(periodStatus(due("02:00", { settings, now: "23:00" }), TODAY, TODAY).deadline?.state).toBe("pending")
+  })
+
+  it("puts weekly deadlines on the last day of the week", () => {
+    const c = ctx({ task: { ...task("accumulate"), dueTime: "18:00" }, targets: [target("week", 3)], now: "19:00" })
+    expect(periodStatus(c, TODAY, TODAY).deadline).toEqual({ date: "2026-10-10", time: "18:00", state: "pending" })
+  })
+
+  it("ignores due times on limits and excused periods", () => {
+    const limit = ctx({ task: { ...task("limit"), dueTime: "09:00" }, targets: [target("day", 1)], now: "10:00" })
+    expect(periodStatus(limit, TODAY, TODAY).deadline).toBeNull()
+    expect(periodStatus(due("09:00", { now: "10:00", exceptions: [exception(TODAY, TODAY)] }), TODAY, TODAY).deadline).toBeNull()
+  })
+
+  it("counts overdue tasks in the overview", () => {
+    const c = due("09:00", { now: "10:00" })
+    expect(overview([{ task: c.task, current: periodStatus(c, TODAY, TODAY) }]).overdue).toBe(1)
   })
 })

@@ -2,13 +2,14 @@ import { useLiveQuery } from "dexie-react-hooks"
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { db } from "@/db/db"
 import { getSettings } from "@/db/repo"
-import { toLocalDate } from "@/domain/dates"
+import { toLocalDate, toLocalTime } from "@/domain/dates"
 import { currentTarget, exceptionsForTask, summarize, type TaskContext, type TaskSummary } from "@/domain/status"
 import type {
   Automation,
   Category,
   Contact,
   LocalDate,
+  LocalTime,
   Settings,
   Share,
   Task,
@@ -35,20 +36,30 @@ export interface AppData {
   shares: Share[]
 }
 
-/** The current local date, refreshed every minute so the UI rolls over at the day boundary. */
-function useToday(dayStartHour: number): LocalDate {
+/**
+ * The current local date and wall-clock time, rechecked often and whenever the app
+ * comes back to the foreground, so day rollovers, deadlines, and time-zone changes
+ * (e.g. after a flight) show up without a reload. Both are primitives, so unchanged
+ * values don't re-render.
+ */
+function useClock(dayStartHour: number): { today: LocalDate; now: LocalTime } {
   const [today, setToday] = useState(() => toLocalDate(new Date(), dayStartHour))
+  const [now, setNow] = useState(() => toLocalTime(new Date()))
   useEffect(() => {
-    const update = () => setToday(toLocalDate(new Date(), dayStartHour))
+    const update = () => {
+      const moment = new Date()
+      setToday(toLocalDate(moment, dayStartHour))
+      setNow(toLocalTime(moment))
+    }
     update()
-    const interval = setInterval(update, 60_000)
+    const interval = setInterval(update, 15_000)
     document.addEventListener("visibilitychange", update)
     return () => {
       clearInterval(interval)
       document.removeEventListener("visibilitychange", update)
     }
   }, [dayStartHour])
-  return today
+  return { today, now }
 }
 
 const AppDataContext = createContext<AppData | null>(null)
@@ -68,7 +79,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     shares: (await db.shares.toArray()).filter((s) => !s.deletedAt),
   }))
 
-  const today = useToday(raw?.settings.dayStartHour ?? 0)
+  const { today, now } = useClock(raw?.settings.dayStartHour ?? 0)
 
   const value = useMemo<AppData | null>(() => {
     if (!raw) return null
@@ -81,6 +92,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         events: raw.events.filter((e) => e.taskId === task.id),
         exceptions: exceptionsForTask(task.id, categoryIds, raw.exceptions),
         settings: raw.settings,
+        now,
       }
       return {
         task,
@@ -100,7 +112,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       contacts: raw.contacts,
       shares: raw.shares,
     }
-  }, [raw, today])
+  }, [raw, today, now])
 
   if (!value) return null
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>

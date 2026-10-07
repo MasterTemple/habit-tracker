@@ -4,6 +4,9 @@
 /** Calendar date in the user's local time, e.g. "2026-10-06". Sorts lexicographically. */
 export type LocalDate = string
 
+/** Wall-clock time of day, 24-hour "HH:MM", in whatever time zone the user was in. */
+export type LocalTime = string
+
 /** UTC timestamp in ISO-8601 format. */
 export type Timestamp = string
 
@@ -27,6 +30,11 @@ export interface Task {
   color: string
   /** What's being counted, singular ("time", "minute", "page"); "" for none. */
   unit: string
+  /**
+   * "Do" tasks only: reach the goal by this wall-clock time (on the period's last day
+   * for weekly/monthly goals). Wall-clock, so 9:00 means 9:00 wherever the user is.
+   */
+  dueTime: LocalTime | null
   sortOrder: number
   incrementAmounts: number[]
   displayMode: DisplayMode
@@ -58,6 +66,10 @@ export interface TaskEvent {
   occurredAt: Timestamp
   /** The day this counts toward, fixed when recorded (respects day start hour and time zone at that moment). */
   localDate: LocalDate
+  /** Wall-clock time when recorded, fixed then, so later time-zone changes don't move it. */
+  localTime: LocalTime
+  /** IANA time zone when recorded (e.g. "America/Denver"); "" if unknown. */
+  timeZone: string
   note: string
   createdAt: Timestamp
   updatedAt: Timestamp

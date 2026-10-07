@@ -1,13 +1,14 @@
 import {
   addDays,
   inRange,
+  minutesIntoDay,
   periodRange,
   previousPeriodRange,
   rangeLength,
   toLocalDate,
   type DateRange,
 } from "./dates"
-import type { LocalDate, Period, Settings, Task, TaskEvent, TaskException, TaskTarget } from "./types"
+import type { LocalDate, LocalTime, Period, Settings, Task, TaskEvent, TaskException, TaskTarget } from "./types"
 
 /** Everything needed to derive a task's progress. Events and exceptions must already be filtered to this task. */
 export interface TaskContext {
@@ -16,6 +17,20 @@ export interface TaskContext {
   events: TaskEvent[]
   exceptions: TaskException[]
   settings: Settings
+  /** Current wall-clock time, for deciding whether today's deadline has passed. Omitted = not yet. */
+  now?: LocalTime
+}
+
+export type DeadlineState =
+  | "pending" // deadline still ahead and goal not met yet
+  | "on_time" // goal met by the deadline
+  | "late" // goal met, but only after the deadline
+  | "missed" // deadline passed and goal still not met
+
+export interface Deadline {
+  date: LocalDate
+  time: LocalTime
+  state: DeadlineState
 }
 
 export type PeriodState =
@@ -36,6 +51,8 @@ export interface PeriodStatus {
   actual: number
   excusedDays: number
   state: PeriodState
+  /** Only for "Do" tasks with a due time, in periods that aren't excused. */
+  deadline: Deadline | null
 }
 
 export interface TaskSummary {
@@ -132,6 +149,7 @@ export function periodStatus(
       actual,
       excusedDays: 0,
       state: actual > 0 ? "success" : "open",
+      deadline: null,
     }
   }
 
@@ -148,8 +166,8 @@ export function periodStatus(
 
   const base = { period, range, target, actual, excusedDays }
 
-  if (!target) return { ...base, goal: null, carried: 0, state: "open" }
-  if (fullyExcused) return { ...base, goal: 0, carried: 0, state: "excused" }
+  if (!target) return { ...base, goal: null, carried: 0, state: "open", deadline: null }
+  if (fullyExcused) return { ...base, goal: 0, carried: 0, state: "excused", deadline: null }
 
   let goal =
     task.type === "accumulate"
@@ -174,7 +192,29 @@ export function periodStatus(
     state = actual > goal ? "failure" : ended ? "success" : "open"
   }
 
-  return { ...base, goal, carried, state }
+  const deadline = task.type === "accumulate" && task.dueTime ? deadlineFor(ctx, range, goal, actual, today) : null
+
+  return { ...base, goal, carried, state, deadline }
+}
+
+/**
+ * Compares wall-clock values only: each entry's localDate/localTime as recorded, the
+ * due time, and the current wall clock. So a deadline means the same local time
+ * wherever the user is, and traveling never re-times past entries.
+ */
+function deadlineFor(ctx: TaskContext, range: DateRange, goal: number, actual: number, today: LocalDate): Deadline {
+  const { dayStartHour } = ctx.settings
+  const time = ctx.task.dueTime!
+  const date = range.end
+  const due = minutesIntoDay(time, dayStartHour)
+  const byDeadline = sumEvents(
+    ctx.events.filter((e) => e.localDate < date || minutesIntoDay(e.localTime, dayStartHour) <= due),
+    (d) => inRange(d, range),
+  )
+  const passed = date < today || (date === today && ctx.now !== undefined && minutesIntoDay(ctx.now, dayStartHour) > due)
+  const state: DeadlineState =
+    byDeadline >= goal ? "on_time" : !passed ? "pending" : actual >= goal ? "late" : "missed"
+  return { date, time, state }
 }
 
 function createdDate(ctx: TaskContext): LocalDate {
@@ -230,6 +270,8 @@ export function summarize(ctx: TaskContext, today: LocalDate): TaskSummary {
 }
 
 export interface Overview {
+  /** Tasks whose deadline has passed with the goal not met. */
+  overdue: number
   /** Average completion (0–1) across tasks with a goal that aren't excused. */
   progress: number
   done: number
@@ -246,7 +288,7 @@ export interface Overview {
  * Track tasks have no goal and are left out.
  */
 export function overview(statuses: { task: Task; current: PeriodStatus }[]): Overview {
-  const result: Overview = { progress: 0, done: 0, remaining: 0, over: 0, counted: 0, excused: 0 }
+  const result: Overview = { progress: 0, done: 0, remaining: 0, over: 0, counted: 0, excused: 0, overdue: 0 }
   let sum = 0
   for (const { task, current } of statuses) {
     if (task.type === "track" || current.goal === null) continue
@@ -256,6 +298,7 @@ export function overview(statuses: { task: Task; current: PeriodStatus }[]): Ove
     }
     result.counted++
     sum += taskFraction(task, current) ?? 0
+    if (current.deadline?.state === "missed") result.overdue++
     if (task.type === "accumulate") {
       if (current.state === "success") result.done++
       else result.remaining++
