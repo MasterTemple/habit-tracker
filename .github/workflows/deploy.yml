@@ -26,6 +26,8 @@ jobs:
       - run: bun run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+          # The sync server's address (repo variable; see deploy/DEPLOY.md). Empty until set.
+          VITE_SERVER_URL: ${{ vars.SERVER_URL }}
           VITE_CONFIG_NATIVE_IGNORE_WARNING: "true"
       - uses: actions/upload-pages-artifact@v3
         with:

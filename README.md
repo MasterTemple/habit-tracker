@@ -25,7 +25,11 @@ Pushing to `main` runs `.github/workflows/deploy.yml`, which typechecks, tests, 
 Data lives in the browser's IndexedDB for that exact origin, so moving between the dev server and the
 deployed site means using Export / Import in Settings.
 
-## Server (in progress)
+## Server
+
+To run it on a server of your own (Docker + automatic HTTPS + daily backups), see
+[`deploy/DEPLOY.md`](deploy/DEPLOY.md).
+
 
 `server/` is a Rust workspace. `server/core` is the app's rules (`src/domain`) ported to Rust, so the server
 computes exactly what the app shows. Both are checked against the same cases in `fixtures/core.json`:

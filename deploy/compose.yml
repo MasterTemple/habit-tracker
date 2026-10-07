@@ -1,0 +1,43 @@
+# The sync server behind Caddy (automatic HTTPS), with nightly database backups.
+# Usage: see DEPLOY.md. Settings come from .env next to this file.
+
+services:
+  api:
+    build: ../server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BIND: 0.0.0.0:8080
+      DATABASE_URL: sqlite:///data/habits.db
+    volumes:
+      - data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  backup:
+    build: ../server
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    healthcheck:
+      disable: true
+    volumes:
+      - data:/data
+      - ./backup.sh:/backup.sh:ro
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:
