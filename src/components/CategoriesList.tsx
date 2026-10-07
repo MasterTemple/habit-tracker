@@ -15,6 +15,7 @@ import { useAppData } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
 import { cn } from "@/lib/utils"
 import { SortableList, useDragHandle } from "./Sortable"
+import { TaskIcon } from "./TaskIcon"
 
 export function CategoriesList({ onShowTasks }: { onShowTasks: (categoryId: string) => void }) {
   const { categories } = useAppData()
@@ -61,6 +62,7 @@ function CategoryRow({ category: c, onShowTasks }: { category: Category; onShowT
       <div
         ref={setHandleNode}
         {...handleProps}
+        data-no-swipe
         className="cursor-grab touch-none p-1.5 active:cursor-grabbing"
         aria-label={`Drag to reorder ${c.name}`}
       >
@@ -71,6 +73,7 @@ function CategoryRow({ category: c, onShowTasks }: { category: Category; onShowT
         className="flex min-w-0 flex-1 items-center gap-3 py-2 text-left"
         onClick={() => openCategory(c.id)}
       >
+        {c.icon && <TaskIcon name={c.icon} className="size-4 shrink-0" style={{ color: c.color }} />}
         <span className="truncate font-medium">{c.name}</span>
         <span className="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           {onBreak && <TreePalmIcon className="size-3.5" aria-label="On break" />}

@@ -128,3 +128,8 @@
     @apply font-sans;
     }
 }
+/* Horizontal swipes switch tabs, so stop the browser from treating them as back/forward navigation. */
+html,
+body {
+  overscroll-behavior-x: none;
+}

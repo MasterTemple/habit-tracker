@@ -13,6 +13,7 @@ import {
   type TaskTarget,
   type TaskType,
 } from "@/domain/types"
+import type { EntityTable } from "dexie"
 import { db } from "./db"
 import { isExceptionV1, migrateExceptionV1 } from "./migrations"
 
@@ -42,9 +43,10 @@ export interface TaskInput {
   type: TaskType
   icon: string
   color: string
+  unit: string
   incrementAmounts: number[]
   displayMode: DisplayMode
-  /** Ignored for track tasks. */
+  /** For track tasks, only the period is used. */
   period: Period
   amount: number
   carryOver: boolean
@@ -61,8 +63,8 @@ function newTarget(taskId: string, input: TaskInput, settings: Settings): TaskTa
     id: uuid(),
     taskId,
     period: input.period,
-    amount: input.amount,
-    carryOver: input.carryOver,
+    amount: input.type === "track" ? 0 : input.amount,
+    carryOver: input.type === "track" ? false : input.carryOver,
     // Takes effect for the whole current period.
     effectiveFrom: periodRange(input.period, today(settings), settings.weekStartsOn).start,
     updatedAt: now(),
@@ -81,6 +83,7 @@ export async function createTask(input: TaskInput, createdFromId: string | null 
       type: input.type,
       icon: input.icon,
       color: input.color,
+      unit: input.unit.trim(),
       incrementAmounts: input.incrementAmounts,
       displayMode: input.displayMode,
       sortOrder: await nextSortOrder(),
@@ -89,7 +92,7 @@ export async function createTask(input: TaskInput, createdFromId: string | null 
       retiredAt: null,
       createdFromId,
     })
-    if (input.type !== "track") await db.targets.add(newTarget(id, input, settings))
+    await db.targets.add(newTarget(id, input, settings))
     await db.taskCategories.bulkAdd(input.categoryIds.map((categoryId) => ({ taskId: id, categoryId })))
   })
   return id
@@ -112,24 +115,23 @@ export async function updateTask(id: string, input: TaskInput) {
       description: input.description,
       icon: input.icon,
       color: input.color,
+      unit: input.unit.trim(),
       incrementAmounts: input.incrementAmounts,
       displayMode: input.displayMode,
       updatedAt: now(),
     })
 
-    if (task.type !== "track") {
-      const targets = await db.targets.where("taskId").equals(id).toArray()
-      const current = currentTarget(targets, today(settings))
-      const changed =
-        !current ||
-        current.period !== input.period ||
-        current.amount !== input.amount ||
-        current.carryOver !== input.carryOver
-      if (changed) {
-        const target = newTarget(id, input, settings)
-        await db.targets.bulkDelete(targets.filter((t) => t.effectiveFrom >= target.effectiveFrom).map((t) => t.id))
-        await db.targets.add(target)
-      }
+    const target = newTarget(id, { ...input, type: task.type }, settings)
+    const targets = await db.targets.where("taskId").equals(id).toArray()
+    const current = currentTarget(targets, today(settings))
+    const changed =
+      !current ||
+      current.period !== target.period ||
+      current.amount !== target.amount ||
+      current.carryOver !== target.carryOver
+    if (changed) {
+      await db.targets.bulkDelete(targets.filter((t) => t.effectiveFrom >= target.effectiveFrom).map((t) => t.id))
+      await db.targets.add(target)
     }
 
     await db.taskCategories.where("taskId").equals(id).delete()
@@ -159,6 +161,7 @@ export async function taskToInput(id: string): Promise<TaskInput> {
     type: task.type,
     icon: task.icon,
     color: task.color,
+    unit: task.unit ?? "",
     incrementAmounts: task.incrementAmounts,
     displayMode: task.displayMode,
     period: target?.period ?? "day",
@@ -253,13 +256,14 @@ export async function restoreEvent(id: string) {
 
 // ---------- categories ----------
 
-export async function createCategory(name: string, color: string): Promise<string> {
+export async function createCategory(name: string, color: string, icon = ""): Promise<string> {
   const last = await db.categories.orderBy("sortOrder").last()
   const id = uuid()
   await db.categories.add({
     id,
     name,
     color,
+    icon,
     sortOrder: (last?.sortOrder ?? -1) + 1,
     updatedAt: now(),
     deletedAt: null,
@@ -267,7 +271,7 @@ export async function createCategory(name: string, color: string): Promise<strin
   return id
 }
 
-export async function updateCategory(id: string, changes: Partial<Pick<Category, "name" | "color">>) {
+export async function updateCategory(id: string, changes: Partial<Pick<Category, "name" | "color" | "icon">>) {
   await db.categories.update(id, { ...changes, updatedAt: now() })
 }
 
@@ -323,7 +327,7 @@ export async function deleteException(id: string) {
 
 // ---------- export / import ----------
 
-export const EXPORT_VERSION = 2
+export const EXPORT_VERSION = 3
 
 export async function exportData() {
   return {
@@ -342,20 +346,101 @@ export async function exportData() {
 
 export type ExportData = Awaited<ReturnType<typeof exportData>>
 
-/** Replaces all local data with an export. */
-export async function importData(data: ExportData) {
-  if (data?.app !== "habit-tracker" || ![1, EXPORT_VERSION].includes(data.version)) {
+/** Brings rows from older exports up to the current shape. */
+function normalizeExport(data: ExportData): ExportData {
+  if (data?.app !== "habit-tracker" || ![1, 2, EXPORT_VERSION].includes(data.version)) {
     throw new Error("Not a habit-tracker export, or from an unsupported version")
   }
-  const exceptions = data.exceptions.map((e) => (isExceptionV1(e) ? migrateExceptionV1(e) : e))
+  return {
+    ...data,
+    tasks: data.tasks.map((t) => ({ ...t, unit: t.unit ?? "" })),
+    categories: data.categories.map((c) => ({ ...c, icon: c.icon ?? "" })),
+    exceptions: data.exceptions.map((e) => (isExceptionV1(e) ? migrateExceptionV1(e) : e)),
+  }
+}
+
+/**
+ * "replace" wipes local data first. "merge" keeps local data and adds the file's:
+ * when a row exists in both, the more recently updated one wins (events and task
+ * links are combined), and local settings are kept.
+ */
+export async function importData(raw: ExportData, mode: "replace" | "merge" = "replace") {
+  const data = normalizeExport(raw)
   await db.transaction("rw", db.tables, async () => {
-    await Promise.all(db.tables.map((t) => t.clear()))
-    await db.settings.put({ ...DEFAULT_SETTINGS, ...data.settings, key: "settings" })
-    await db.tasks.bulkAdd(data.tasks)
-    await db.targets.bulkAdd(data.targets)
-    await db.events.bulkAdd(data.events)
-    await db.categories.bulkAdd(data.categories)
-    await db.taskCategories.bulkAdd(data.taskCategories)
-    await db.exceptions.bulkAdd(exceptions)
+    if (mode === "replace") {
+      await Promise.all(db.tables.map((t) => t.clear()))
+      await db.settings.put({ ...DEFAULT_SETTINGS, ...data.settings, key: "settings" })
+      await db.tasks.bulkAdd(data.tasks)
+      await db.targets.bulkAdd(data.targets)
+      await db.events.bulkAdd(data.events)
+      await db.categories.bulkAdd(data.categories)
+      await db.taskCategories.bulkAdd(data.taskCategories)
+      await db.exceptions.bulkAdd(data.exceptions)
+      return
+    }
+    await mergeNewest(db.tasks, data.tasks)
+    await mergeNewest(db.targets, data.targets)
+    await mergeNewest(db.events, data.events)
+    await mergeNewest(db.categories, data.categories)
+    await mergeNewest(db.exceptions, data.exceptions)
+    await db.taskCategories.bulkPut(data.taskCategories)
   })
+}
+
+async function mergeNewest<T extends { id: string; updatedAt: string }>(table: EntityTable<T, "id">, incoming: T[]) {
+  // Tables are small (a few thousand rows), so reading them whole is simplest.
+  const local = new Map((await table.toArray()).map((r) => [r.id, r]))
+  await table.bulkPut(incoming.filter((r) => !local.has(r.id) || r.updatedAt > local.get(r.id)!.updatedAt))
+}
+
+// ---------- templates (sharing task definitions without history) ----------
+
+export interface Template {
+  app: "habit-tracker"
+  kind: "template"
+  version: 1
+  categories: { key: string; name: string; color: string; icon: string }[]
+  tasks: (Omit<TaskInput, "categoryIds"> & { categoryKeys: string[] })[]
+}
+
+/**
+ * Task definitions (with their current goal) and categories, without any entries,
+ * so someone else can import them and do the tasks too. Categories of the chosen
+ * tasks are always included.
+ */
+export async function exportTemplate(taskIds: string[], categoryIds: string[]): Promise<Template> {
+  const tasks = await Promise.all(taskIds.map((id) => taskToInput(id)))
+  const allCategoryIds = [...new Set([...categoryIds, ...tasks.flatMap((t) => t.categoryIds)])]
+  const categories = (await db.categories.bulkGet(allCategoryIds)).filter((c): c is Category => !!c && !c.deletedAt)
+  return {
+    app: "habit-tracker",
+    kind: "template",
+    version: 1,
+    categories: categories.map((c) => ({ key: c.id, name: c.name, color: c.color, icon: c.icon })),
+    tasks: tasks.map(({ categoryIds: ids, ...task }) => ({ ...task, categoryKeys: ids })),
+  }
+}
+
+export function isTemplate(data: unknown): data is Template {
+  return (data as Template)?.app === "habit-tracker" && (data as Template)?.kind === "template"
+}
+
+/** Adds a template's tasks as new tasks. Categories are matched by name (case-insensitive) or created. */
+export async function importTemplate(template: Template): Promise<{ tasks: number; categories: number }> {
+  const existing = (await db.categories.toArray()).filter((c) => !c.deletedAt)
+  const idByKey = new Map<string, string>()
+  let createdCategories = 0
+  for (const c of template.categories) {
+    const match = existing.find((e) => e.name.toLowerCase() === c.name.toLowerCase())
+    if (match) idByKey.set(c.key, match.id)
+    else {
+      idByKey.set(c.key, await createCategory(c.name, c.color, c.icon ?? ""))
+      createdCategories++
+    }
+  }
+  for (const { categoryKeys, ...task } of template.tasks) {
+    const categoryIds = categoryKeys.map((k) => idByKey.get(k)).filter((id): id is string => !!id)
+    await createTask({ ...task, unit: task.unit ?? "", categoryIds })
+  }
+  return { tasks: template.tasks.length, categories: createdCategories }
 }

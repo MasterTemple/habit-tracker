@@ -11,6 +11,7 @@ import { periodHistory, type PeriodStatus } from "@/domain/status"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { breakDates, breakScopeNames } from "@/lib/breaks"
 import { goalText, progressPercent, statusText } from "@/lib/format"
+import { BOTTOM_SHEET } from "@/lib/viewport"
 import { cn } from "@/lib/utils"
 import { TaskIcon } from "./TaskIcon"
 
@@ -26,7 +27,7 @@ interface Props {
 export function TaskDetail({ view, today, onClose, ...actions }: Props) {
   return (
     <Sheet open={!!view} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className="mx-auto max-h-[92dvh] max-w-lg overflow-y-auto rounded-t-2xl">
+      <SheetContent side="bottom" className={BOTTOM_SHEET}>
         {view && <Detail view={view} today={today} {...actions} />}
       </SheetContent>
     </Sheet>

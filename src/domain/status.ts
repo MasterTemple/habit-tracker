@@ -96,7 +96,6 @@ function countExcusedDays(range: DateRange, exceptions: TaskException[]): number
 }
 
 function periodFor(ctx: TaskContext, date: LocalDate): Period {
-  if (ctx.task.type === "track") return "day"
   const target = currentTarget(ctx.targets, date)
   return target?.period ?? "day"
 }
@@ -122,11 +121,12 @@ export function periodStatus(
   const ended = range.end < today
 
   if (task.type === "track") {
+    // A counter with no goal: the target only sets the period it resets on.
     const actual = sumEvents(ctx.events, (d) => inRange(d, range))
     return {
       period,
       range,
-      target: null,
+      target: targetFor(ctx.targets, range),
       goal: null,
       carried: 0,
       actual,
@@ -255,15 +255,13 @@ export function overview(statuses: { task: Task; current: PeriodStatus }[]): Ove
       continue
     }
     result.counted++
+    sum += taskFraction(task, current) ?? 0
     if (task.type === "accumulate") {
-      const fraction = current.goal === 0 ? 1 : Math.min(1, Math.max(0, current.actual / current.goal))
-      sum += fraction
       if (current.state === "success") result.done++
       else result.remaining++
     } else if (current.state === "failure") {
       result.over++
     } else {
-      sum += 1
       result.done++
     }
   }
@@ -271,7 +269,17 @@ export function overview(statuses: { task: Task; current: PeriodStatus }[]): Ove
   return result
 }
 
-/** True when the task's goal is "once per period", so the UI shows a checkbox. */
+/**
+ * How much of its goal a task has met (0–1): accumulate by fraction of the goal,
+ * a limit fully while within it. Null when it has no goal or is excused.
+ */
+export function taskFraction(task: Task, current: PeriodStatus): number | null {
+  if (task.type === "track" || current.goal === null || current.state === "excused") return null
+  if (task.type === "limit") return current.state === "failure" ? 0 : 1
+  return current.goal === 0 ? 1 : Math.min(1, Math.max(0, current.actual / current.goal))
+}
+
+/** True when a goal is "once per period", so the card shows a checkbox. Track tasks always count. */
 export function isCheckbox(task: Task, target: TaskTarget | null): boolean {
-  return task.type === "track" || target?.amount === 1
+  return task.type !== "track" && target?.amount === 1
 }

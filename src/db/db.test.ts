@@ -20,3 +20,20 @@ it("upgrades v1 single-scope breaks to multi-scope", async () => {
   expect(await db.exceptions.where("categoryIds").equals("cat1").count()).toBe(1)
   db.close()
 })
+
+it("upgrades v2 rows with defaults for units and category icons", async () => {
+  const old = new Dexie("upgrade-v3")
+  old.version(2).stores({
+    tasks: "id, sortOrder, updatedAt",
+    categories: "id, sortOrder, updatedAt",
+    exceptions: "id, *taskIds, *categoryIds, updatedAt",
+  })
+  await old.table("tasks").add({ id: "t", name: "Run", sortOrder: 0, updatedAt: "" })
+  await old.table("categories").add({ id: "c", name: "Exercise", sortOrder: 0, updatedAt: "" })
+  old.close()
+
+  const db = new HabitDB("upgrade-v3")
+  expect((await db.tasks.get("t"))?.unit).toBe("")
+  expect((await db.categories.get("c"))?.icon).toBe("")
+  db.close()
+})

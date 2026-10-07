@@ -41,14 +41,24 @@ src/pages/      Tasks (Tasks | Categories), Schedule (Breaks | Automations), Soc
 
 Progress is never stored; it's derived from append-only **events** (`+10 at 09:01`).
 
-- **tasks**: what the task is. Type (`accumulate` / `limit` / `track`) is immutable; use *Duplicate* or
+- **tasks**: what the task is, with an optional unit ("minute", "page"). `track` tasks are counters with no
+  goal. Type (`accumulate` / `limit` / `track`) is immutable; use *Duplicate* or
   *Copy & retire* (both link the copy via `createdFromId`).
-- **targets**: versioned goals (`period`, `amount`, `carryOver`, `effectiveFrom`). The version in effect at a
+- **targets**: versioned goals (track tasks have one too, only for their period) (`period`, `amount`, `carryOver`, `effectiveFrom`). The version in effect at a
   period's start governs that period. Editing a goal creates a version starting at the current period.
 - **events**: amounts (negative for corrections) with a fixed `localDate`; soft-deleted for undo.
-- **categories** / **taskCategories**: many-to-many; priorities are just categories.
+- **categories** / **taskCategories**: many-to-many; priorities are just categories. List order is priority:
+  a new task takes the default icon of its highest-priority category.
 - **exceptions** ("breaks"): cover all tasks, or any mix of tasks and categories.
-- **settings**: week start, day start hour, carry-over default, limit wording (used / remaining).
+- **settings**: week start, day start hour, carry-over default, limit wording (used / remaining), name of the
+  "uncategorized" filter.
+
+### Import / export
+
+- **Backup** (Settings → Export): everything. Importing one asks to **merge** (newest copy of each row wins,
+  local settings kept) or **replace**.
+- **Shared tasks** (Settings → Share tasks): task settings and categories, no entries. Importing adds them as new
+  tasks, reusing categories with the same name.
 
 ### Rules
 

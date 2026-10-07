@@ -20,11 +20,30 @@ export const PERIOD_ADJECTIVE: Record<Period, string> = {
   month: "month",
 }
 
+/**
+ * A unit for a count: "1 minute", "5 minutes". Units ending in "s" are left as typed
+ * (so "minutes" or "reps" work too); "" stays "".
+ */
+export function units(unit: string, count: number): string {
+  if (!unit || Math.abs(count) === 1) return unit
+  if (/(ss|x|z|ch|sh)$/i.test(unit)) return `${unit}es`
+  if (/s$/i.test(unit)) return unit
+  if (/[^aeiou]y$/i.test(unit)) return `${unit.slice(0, -1)}ies`
+  return `${unit}s`
+}
+
+/** "5", "5 minutes", or "1,200 reps". */
+function count(n: number, unit: string): string {
+  const u = units(unit, n)
+  return u ? `${n.toLocaleString()} ${u}` : n.toLocaleString()
+}
+
 export function goalText(task: Task, status: PeriodStatus): string {
-  if (task.type === "track" || !status.target) return "Track only"
-  const per = PERIOD_ADJECTIVE[status.target.period]
-  if (task.type === "limit") return status.target.amount === 0 ? `Never (per ${per})` : `≤ ${status.target.amount} / ${per}`
-  return `${status.target.amount} / ${per}`
+  const per = PERIOD_ADJECTIVE[status.period]
+  if (task.type === "track" || !status.target) return task.unit ? `Counting ${units(task.unit, 2)} per ${per}` : `Counting per ${per}`
+  const { amount } = status.target
+  if (task.type === "limit") return amount === 0 ? `Never (per ${per})` : `At most ${count(amount, task.unit)} per ${per}`
+  return `At least ${count(amount, task.unit)} per ${per}`
 }
 
 /** Number shown on the card, according to the task's display mode. */
@@ -32,22 +51,25 @@ export function displayValue(task: Task, summary: TaskSummary, limitDisplay: Lim
   const { current } = summary
   switch (task.displayMode) {
     case "today":
-      return `${summary.today} today`
+      return `${count(summary.today, task.unit)} today`
     case "total":
-      return `${summary.total.toLocaleString()} total`
-    case "period":
-      if (current.goal === null || current.state === "excused") return `${current.actual} ${PERIOD_LABEL[current.period]}`
+      return `${count(summary.total, task.unit)} total`
+    case "period": {
+      const when = PERIOD_LABEL[current.period]
+      if (current.goal === null || current.state === "excused") return `${count(current.actual, task.unit)} ${when}`
       if (showsRemaining(task, current, limitDisplay)) {
-        return `${Math.max(0, current.goal - current.actual)} / ${current.goal} remaining ${PERIOD_LABEL[current.period]}`
+        const left = Math.max(0, current.goal - current.actual)
+        return `${left} / ${count(current.goal, task.unit)} remaining ${when}`
       }
-      return `${current.actual} / ${current.goal} ${PERIOD_LABEL[current.period]}`
+      return `${current.actual} / ${count(current.goal, task.unit)} ${when}`
+    }
   }
 }
 
 export function statusText(task: Task, status: PeriodStatus, limitDisplay: LimitDisplay = "used"): string {
   if (status.state === "excused") return "Excused"
   if (status.actual < 0) return "Negative — check history"
-  if (task.type === "track") return status.actual > 0 ? "Done" : ""
+  if (task.type === "track") return ""
   if (status.goal === null) return ""
   if (task.type === "accumulate") {
     if (status.actual > status.goal) return `Done +${status.actual - status.goal}`

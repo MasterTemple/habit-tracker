@@ -2,11 +2,33 @@ import { SearchIcon } from "lucide-react"
 import { iconNames } from "lucide-react/dynamic"
 import { useEffect, useMemo, useState } from "react"
 import { Input } from "@/components/ui/input"
+import { useAppData } from "@/hooks/useAppData"
 import { SUGGESTED_ICONS } from "@/lib/icons"
 import { cn } from "@/lib/utils"
 import { TaskIcon } from "./TaskIcon"
 
 const MAX_RESULTS = 96
+const RECENTS_KEY = "recent-icons"
+const MAX_RECENTS = 16
+
+// Recently picked icons are a per-device convenience, so browser storage is fine (and may be unavailable).
+function loadRecents(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENTS_KEY) ?? "[]")
+    return Array.isArray(parsed) ? parsed.filter((n) => typeof n === "string") : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecent(name: string) {
+  try {
+    const next = [name, ...loadRecents().filter((n) => n !== name)].slice(0, MAX_RECENTS)
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next))
+  } catch {
+    // ignore
+  }
+}
 
 type Tags = Record<string, string[]>
 
@@ -38,7 +60,9 @@ interface Props {
 }
 
 export function IconPicker({ value, color, onChange }: Props) {
+  const { tasks, categories } = useAppData()
   const [query, setQuery] = useState("")
+  const [recents] = useState(loadRecents)
   const [tags, setTags] = useState<Tags | null>(null)
 
   useEffect(() => {
@@ -47,9 +71,18 @@ export function IconPicker({ value, color, onChange }: Props) {
   }, [])
 
   const matches = useMemo(() => {
-    if (!query.trim()) return [value, ...SUGGESTED_ICONS.filter((n) => n !== value)]
+    if (!query.trim()) {
+      // Current choice, then recently picked, then icons already in use, then suggestions.
+      const inUse = [...tasks.filter((t) => !t.task.retiredAt).map((t) => t.task.icon), ...categories.map((c) => c.icon)]
+      return [...new Set([value, ...recents, ...inUse, ...SUGGESTED_ICONS])].filter((n) => n && iconNames.includes(n as never))
+    }
     return search(query, tags)
-  }, [query, tags, value])
+  }, [query, tags, value, recents, tasks, categories])
+
+  const pick = (name: string) => {
+    saveRecent(name)
+    onChange(name)
+  }
 
   return (
     <div className="grid gap-2">
@@ -68,7 +101,7 @@ export function IconPicker({ value, color, onChange }: Props) {
           <button
             key={name}
             type="button"
-            onClick={() => onChange(name)}
+            onClick={() => pick(name)}
             className={cn(
               "flex aspect-square items-center justify-center rounded-md border",
               value === name ? "border-foreground bg-muted" : "border-transparent",

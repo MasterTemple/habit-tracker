@@ -10,7 +10,9 @@ import {
   deleteEvent,
   duplicateTask,
   exportData,
+  exportTemplate,
   importData,
+  importTemplate,
   reorderCategory,
   reorderTask,
   recordEvent,
@@ -27,6 +29,7 @@ const input: TaskInput = {
   type: "accumulate",
   icon: "dumbbell",
   color: "#ef4444",
+  unit: "",
   incrementAmounts: [1, 5, 10],
   displayMode: "period",
   period: "day",
@@ -168,5 +171,60 @@ describe("repo", () => {
     await importData(JSON.parse(JSON.stringify(data)))
     expect(await db.tasks.count()).toBe(1)
     expect(await db.events.count()).toBe(1)
+  })
+
+  it("gives track tasks a period target with no goal", async () => {
+    const id = await createTask({ ...input, type: "track", period: "week", amount: 50, carryOver: true })
+    const [target] = await db.targets.where("taskId").equals(id).toArray()
+    expect(target).toMatchObject({ period: "week", amount: 0, carryOver: false })
+    await updateTask(id, { ...input, type: "track", period: "month" })
+    expect((await taskToInput(id)).period).toBe("month")
+  })
+
+  it("merges an import, keeping the newer copy of each row", async () => {
+    const id = await createTask(input)
+    await recordEvent(id, 10)
+    const backup = JSON.parse(JSON.stringify(await exportData()))
+
+    // Locally: rename (newer than the backup) and add another task and entry.
+    await new Promise((r) => setTimeout(r, 5))
+    await updateTask(id, { ...input, name: "Renamed" })
+    const other = await createTask({ ...input, name: "Other" })
+    await recordEvent(other, 1)
+
+    // The backup has an entry the phone doesn't (e.g. from another device).
+    backup.events.push({ ...backup.events[0], id: "from-backup", amount: 3 })
+    await importData(backup, "merge")
+
+    expect((await db.tasks.get(id))?.name).toBe("Renamed")
+    expect(await db.tasks.count()).toBe(2)
+    expect(await db.events.count()).toBe(3)
+  })
+
+  it("replaces everything on a replace import", async () => {
+    await createTask(input)
+    const backup = JSON.parse(JSON.stringify(await exportData()))
+    await createTask({ ...input, name: "Other" })
+    await importData(backup, "replace")
+    expect(await db.tasks.count()).toBe(1)
+  })
+
+  it("shares task definitions without entries and reuses categories by name", async () => {
+    const cat = await createCategory("Exercise", "#f00", "dumbbell")
+    const id = await createTask({ ...input, unit: "rep", categoryIds: [cat] })
+    await recordEvent(id, 10)
+    const template = JSON.parse(JSON.stringify(await exportTemplate([id], [])))
+    expect(template.categories).toHaveLength(1)
+    expect(JSON.stringify(template)).not.toContain('"events"')
+
+    // Importing on the same device: "Exercise" already exists, so it's reused.
+    const result = await importTemplate(template)
+    expect(result).toEqual({ tasks: 1, categories: 0 })
+    const tasks = await db.tasks.toArray()
+    expect(tasks).toHaveLength(2)
+    const copy = tasks.find((t) => t.id !== id)!
+    expect(copy.unit).toBe("rep")
+    expect((await taskToInput(copy.id)).categoryIds).toEqual([cat])
+    expect(await db.events.where("taskId").equals(copy.id).count()).toBe(0)
   })
 })

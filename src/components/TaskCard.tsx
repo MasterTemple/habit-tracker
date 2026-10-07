@@ -80,12 +80,20 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
         drag?.dragging && "z-10 shadow-lg",
       )}
     >
-      <div className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: task.color }} />
+      {/* The color tab is also a drag handle; its touch area is wider than the stripe. */}
+      <div
+        {...drag?.extraHandleProps}
+        data-no-swipe
+        className={cn("absolute inset-y-0 left-0 w-3.5", drag && "cursor-grab touch-none active:cursor-grabbing")}
+      >
+        <div className="h-full w-1.5" style={{ backgroundColor: task.color }} />
+      </div>
 
       <div className="flex items-center gap-3">
         <div
           ref={drag?.setHandleNode}
           {...drag?.handleProps}
+          data-no-swipe
           className={cn("-my-2 -ml-1 shrink-0 py-2 pl-1", drag && "cursor-grab touch-none active:cursor-grabbing")}
           aria-label={drag ? `Drag to reorder ${task.name}` : undefined}
         >

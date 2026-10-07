@@ -17,6 +17,8 @@ export interface DragProps {
   rootStyle: CSSProperties
   setHandleNode: (el: HTMLElement | null) => void
   handleProps: HTMLAttributes<HTMLDivElement>
+  /** Pointer listeners only, for a second, non-focusable handle. */
+  extraHandleProps: HTMLAttributes<HTMLDivElement>
   dragging: boolean
 }
 
@@ -57,6 +59,7 @@ export function useDragHandle(id: string): DragProps {
     rootStyle: { transform: CSS.Translate.toString(transform), transition, position: "relative" },
     setHandleNode: setActivatorNodeRef,
     handleProps: { ...attributes, ...listeners },
+    extraHandleProps: { ...listeners },
     dragging: isDragging,
   }
 }

@@ -37,6 +37,15 @@ export class HabitDB extends Dexie {
             if (isExceptionV1(e)) ref.value = migrateExceptionV1(e)
           }),
       )
+    // v3: task units and category default icons.
+    this.version(3).upgrade(async (tx) => {
+      await tx.table("tasks").toCollection().modify((t) => {
+        t.unit ??= ""
+      })
+      await tx.table("categories").toCollection().modify((c) => {
+        c.icon ??= ""
+      })
+    })
   }
 }
 

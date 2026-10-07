@@ -21,6 +21,7 @@ import {
 import type { DisplayMode, Period, TaskType } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { COLORS, nextColor } from "@/lib/icons"
+import { BOTTOM_SHEET } from "@/lib/viewport"
 import { cn } from "@/lib/utils"
 import { ButtonAmounts } from "./ButtonAmounts"
 import { CategoryChip } from "./CategoryChip"
@@ -48,7 +49,7 @@ const SAVE_LABELS = { new: "Create task", edit: "Save", duplicate: "Create copy"
 const TYPES: { value: TaskType; label: string; hint: string }[] = [
   { value: "accumulate", label: "Do", hint: "Reach at least N per period" },
   { value: "limit", label: "Limit", hint: "Stay at or under N per period (0 = never)" },
-  { value: "track", label: "Track", hint: "Just mark when it happens" },
+  { value: "track", label: "Track", hint: "Count how often it happens, with no goal" },
 ]
 
 function emptyInput(carryOver: boolean): TaskInput {
@@ -58,6 +59,7 @@ function emptyInput(carryOver: boolean): TaskInput {
     type: "accumulate",
     icon: "circle",
     color: COLORS[5],
+    unit: "",
     incrementAmounts: [1],
     displayMode: "period",
     period: "day",
@@ -66,6 +68,8 @@ function emptyInput(carryOver: boolean): TaskInput {
     categoryIds: [],
   }
 }
+
+const UNIT_SUGGESTIONS = ["time", "minute", "hour", "page", "chapter", "rep", "set", "step", "glass", "mile", "km"]
 
 const toSlots = (amounts: number[]) => [0, 1, 2].map((i) => amounts[i] ?? null)
 
@@ -80,6 +84,8 @@ export function TaskEditor({ target, onClose }: Props) {
   const [slots, setSlots] = useState<(number | null)[]>([1, null, null])
   const [tab, setTab] = useState("goal")
   const [newCategory, setNewCategory] = useState("")
+  // New tasks take their icon from their highest-priority category until one is picked by hand.
+  const [iconPicked, setIconPicked] = useState(false)
   const mode = target?.mode ?? "new"
   const typeLocked = mode === "edit"
   const source = target && target.mode !== "new" ? tasks.find((t) => t.task.id === target.taskId)?.task : undefined
@@ -89,6 +95,7 @@ export function TaskEditor({ target, onClose }: Props) {
     let cancelled = false
     setInput(null)
     setTab("goal")
+    setIconPicked(target.mode !== "new")
     const load =
       target.mode === "new" ? Promise.resolve(emptyInput(settings.carryOverDefault)) : taskToInput(target.taskId)
     load.then((loaded) => {
@@ -105,13 +112,15 @@ export function TaskEditor({ target, onClose }: Props) {
 
   const set = (changes: Partial<TaskInput>) => setInput((prev) => (prev ? { ...prev, ...changes } : prev))
 
-  const toggleCategory = (id: string) =>
-    input &&
-    set({
-      categoryIds: input.categoryIds.includes(id)
-        ? input.categoryIds.filter((c) => c !== id)
-        : [...input.categoryIds, id],
-    })
+  const toggleCategory = (id: string) => {
+    if (!input) return
+    const categoryIds = input.categoryIds.includes(id)
+      ? input.categoryIds.filter((c) => c !== id)
+      : [...input.categoryIds, id]
+    // categories are already in priority order
+    const categoryIcon = categories.find((c) => categoryIds.includes(c.id) && c.icon)?.icon
+    set({ categoryIds, ...(iconPicked ? {} : { icon: categoryIcon ?? "circle" }) })
+  }
 
   const addCategory = async () => {
     const name = newCategory.trim()
@@ -155,11 +164,11 @@ export function TaskEditor({ target, onClose }: Props) {
   }[mode]
 
   // Buttons only matter when the card shows them instead of a checkbox.
-  const showButtons = input && input.type !== "track" && input.amount !== 1
+  const showButtons = input && (input.type === "track" || input.amount !== 1)
 
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className="mx-auto max-h-[92dvh] max-w-lg overflow-y-auto rounded-t-2xl">
+      <SheetContent side="bottom" className={BOTTOM_SHEET}>
         <SheetHeader>
           <SheetTitle>{TITLES[mode]}</SheetTitle>
           <SheetDescription className={cn(!description && "sr-only")}>{description ?? "Task settings"}</SheetDescription>
@@ -211,36 +220,56 @@ export function TaskEditor({ target, onClose }: Props) {
                   </p>
                 </div>
 
+                <div className="grid gap-1.5">
+                  <Label htmlFor={input.type === "track" ? "task-unit" : "task-amount"}>
+                    {{ accumulate: "At least", limit: "At most", track: "Count" }[input.type]}
+                  </Label>
+                  <div className="flex gap-2">
+                    {input.type !== "track" && (
+                      <NumberInput
+                        id="task-amount"
+                        className="w-16 shrink-0 text-center"
+                        value={input.amount}
+                        onChange={(n) => n !== null && set({ amount: n })}
+                      />
+                    )}
+                    <Input
+                      id="task-unit"
+                      aria-label="Unit"
+                      className="min-w-0 flex-1"
+                      list="unit-suggestions"
+                      autoCapitalize="none"
+                      value={input.unit}
+                      onChange={(e) => set({ unit: e.target.value })}
+                      placeholder={input.type !== "track" && input.amount === 1 ? "time" : "times"}
+                    />
+                    <span className="self-center text-sm text-muted-foreground">per</span>
+                    <Select value={input.period} onValueChange={(v) => set({ period: v as Period })}>
+                      <SelectTrigger className="w-28 shrink-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">Day</SelectItem>
+                        <SelectItem value="week">Week</SelectItem>
+                        <SelectItem value="month">Month</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <datalist id="unit-suggestions">
+                    {UNIT_SUGGESTIONS.map((u) => (
+                      <option key={u} value={u} />
+                    ))}
+                  </datalist>
+                  <p className="text-xs text-muted-foreground">
+                    The unit is optional (e.g. minute, page, rep).
+                    {mode === "edit" &&
+                      input.type !== "track" &&
+                      " Goal changes apply from the start of the current period; earlier history keeps the old goal."}
+                  </p>
+                </div>
+
                 {input.type !== "track" && (
                   <>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="task-amount">{input.type === "limit" ? "At most" : "At least"}</Label>
-                      <div className="flex gap-2">
-                        <NumberInput
-                          id="task-amount"
-                          className="w-28"
-                          value={input.amount}
-                          onChange={(n) => n !== null && set({ amount: n })}
-                        />
-                        <span className="self-center text-sm text-muted-foreground">per</span>
-                        <Select value={input.period} onValueChange={(v) => set({ period: v as Period })}>
-                          <SelectTrigger className="flex-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="day">Day</SelectItem>
-                            <SelectItem value="week">Week</SelectItem>
-                            <SelectItem value="month">Month</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {mode === "edit" && (
-                        <p className="text-xs text-muted-foreground">
-                          Goal changes apply from the start of the current period; earlier history keeps the old goal.
-                        </p>
-                      )}
-                    </div>
-
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <Label htmlFor="task-carry">Carry over</Label>
@@ -320,7 +349,14 @@ export function TaskEditor({ target, onClose }: Props) {
 
                 <div className="grid gap-1.5">
                   <Label>Icon</Label>
-                  <IconPicker value={input.icon} color={input.color} onChange={(icon) => set({ icon })} />
+                  <IconPicker
+                    value={input.icon}
+                    color={input.color}
+                    onChange={(icon) => {
+                      setIconPicked(true)
+                      set({ icon })
+                    }}
+                  />
                 </div>
 
                 <div className="grid gap-1.5">

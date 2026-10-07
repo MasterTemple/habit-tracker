@@ -1,14 +1,18 @@
-import { DownloadIcon, UploadIcon } from "lucide-react"
-import { useRef } from "react"
+import { DownloadIcon, Share2Icon, UploadIcon } from "lucide-react"
+import { useRef, useState } from "react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/PageHeader"
+import { ShareSheet } from "@/components/ShareSheet"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { exportData, importData, updateSettings } from "@/db/repo"
+import { exportData, importData, importTemplate, isTemplate, updateSettings, type ExportData } from "@/db/repo"
 import type { WeekStart } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
+import { saveJson } from "@/lib/files"
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -21,35 +25,38 @@ export function SettingsPage() {
   const { settings, today } = useAppData()
   const fileInput = useRef<HTMLInputElement>(null)
 
-  const doExport = async () => {
-    const data = await exportData()
-    const name = `habit-tracker-${today}.json`
-    const file = new File([JSON.stringify(data, null, 2)], name, { type: "application/json" })
-    // The share sheet is the most reliable way to save a file on iOS.
-    if (navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: name })
-        return
-      } catch (e) {
-        if ((e as Error).name === "AbortError") return
-      }
-    }
-    const url = URL.createObjectURL(file)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = name
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const [sharing, setSharing] = useState(false)
+  // A parsed full backup waiting for the user to pick replace or merge.
+  const [pendingImport, setPendingImport] = useState<ExportData | null>(null)
 
-  const doImport = async (file: File) => {
-    if (!confirm("Replace ALL current data with this file?")) return
+  const doExport = async () => saveJson(`habit-tracker-${today}.json`, await exportData())
+
+  const readFile = async (file: File) => {
     try {
-      await importData(JSON.parse(await file.text()))
-      toast.success("Data imported")
+      const data = JSON.parse(await file.text())
+      if (isTemplate(data)) {
+        const result = await importTemplate(data)
+        toast.success(
+          `Added ${result.tasks} ${result.tasks === 1 ? "task" : "tasks"}` +
+            (result.categories ? ` and ${result.categories} new ${result.categories === 1 ? "category" : "categories"}` : ""),
+        )
+      } else {
+        setPendingImport(data)
+      }
     } catch (e) {
       toast.error(`Import failed: ${(e as Error).message}`)
     }
+  }
+
+  const finishImport = async (mode: "replace" | "merge") => {
+    if (!pendingImport) return
+    try {
+      await importData(pendingImport, mode)
+      toast.success(mode === "replace" ? "Data replaced" : "Data merged")
+    } catch (e) {
+      toast.error(`Import failed: ${(e as Error).message}`)
+    }
+    setPendingImport(null)
   }
 
   return (
@@ -105,6 +112,14 @@ export function SettingsPage() {
             </SelectContent>
           </Select>
         </Row>
+        <Row label="Uncategorized filter" hint="Name of the filter for tasks without a category">
+          <Input
+            className="w-36"
+            defaultValue={settings.uncategorizedName}
+            placeholder="Other"
+            onBlur={(e) => updateSettings({ uncategorizedName: e.target.value.trim() || "Other" })}
+          />
+        </Row>
         <Row label="Carry over by default" hint="Default for new tasks; each task can override it">
           <Switch
             checked={settings.carryOverDefault}
@@ -128,13 +143,46 @@ export function SettingsPage() {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0]
-              if (file) doImport(file)
+              if (file) readFile(file)
               e.target.value = ""
             }}
           />
         </div>
-        <p className="text-xs text-muted-foreground">Data is stored only on this device. Export regularly as a backup.</p>
+        <p className="text-xs text-muted-foreground">
+          Data is stored only on this device. Export regularly as a backup. Import accepts a backup or a shared task
+          file.
+        </p>
+        <Button variant="outline" onClick={() => setSharing(true)}>
+          <Share2Icon /> Share tasks…
+        </Button>
       </Section>
+
+      <ShareSheet open={sharing} onClose={() => setSharing(false)} />
+
+      <Dialog open={!!pendingImport} onOpenChange={(o) => !o && setPendingImport(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Import backup</DialogTitle>
+            <DialogDescription>
+              {pendingImport &&
+                `${pendingImport.tasks?.length ?? 0} tasks and ${pendingImport.events?.length ?? 0} entries from ${
+                  pendingImport.exportedAt ? new Date(pendingImport.exportedAt).toLocaleDateString() : "an export"
+                }.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Button onClick={() => finishImport("merge")}>Merge with my data</Button>
+            <p className="text-xs text-muted-foreground">
+              Keeps everything here and adds what's new from the file. Where both have the same item, the more
+              recently changed one wins. Your settings stay as they are.
+            </p>
+            <Button variant="destructive" className="mt-2" onClick={() => finishImport("replace")}>
+              Replace everything
+            </Button>
+            <p className="text-xs text-muted-foreground">Deletes all data on this device, then loads the file.</p>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )

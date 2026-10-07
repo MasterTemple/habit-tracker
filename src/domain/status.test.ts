@@ -22,6 +22,7 @@ function task(type: TaskType, createdAt = "2026-01-01T12:00:00"): Task {
     type,
     icon: "circle",
     color: "#000",
+    unit: "",
     sortOrder: 0,
     incrementAmounts: [1],
     displayMode: "period",
@@ -156,6 +157,14 @@ describe("periodStatus", () => {
     const c = ctx({ task: task("limit"), targets: [target("day", 0)] })
     expect(periodStatus(c, "2026-10-06", TODAY).state).toBe("success")
     expect(periodStatus(c, TODAY, TODAY).state).toBe("open")
+  })
+
+  it("counts track tasks over their target's period", () => {
+    const c = ctx({ task: task("track"), targets: [target("week", 0)], events: [ev("2026-10-04", 2), ev(TODAY, 3)] })
+    const s = periodStatus(c, TODAY, TODAY)
+    expect(s.period).toBe("week")
+    expect(s.actual).toBe(5)
+    expect(s.goal).toBeNull()
   })
 
   it("treats track tasks as done when any event exists", () => {

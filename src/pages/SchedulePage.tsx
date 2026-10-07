@@ -6,15 +6,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { TaskException } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
+import { useViewTab } from "@/hooks/useNav"
 import { breakDates, breakScopeNames } from "@/lib/breaks"
 import { cn } from "@/lib/utils"
 
 export function SchedulePage() {
   const { openBreak } = useEditors()
+  const [tab, setTab] = useViewTab("schedule")
   return (
     <div className="flex flex-col gap-3">
       <PageHeader title="Schedule" onCreate={() => openBreak({})} createLabel="New break" />
-      <Tabs defaultValue="breaks">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="w-full">
           <TabsTrigger value="breaks">Breaks</TabsTrigger>
           <TabsTrigger value="automations">Automations</TabsTrigger>

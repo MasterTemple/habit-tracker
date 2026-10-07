@@ -13,14 +13,21 @@ import { reorderTask } from "@/db/repo"
 import { seedExamples } from "@/db/seed"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
+import { useViewTab } from "@/hooks/useNav"
+import { UNCATEGORIZED } from "@/lib/filters"
 import { cn } from "@/lib/utils"
 
 export function TasksPage() {
   const { tasks } = useAppData()
-  const [tab, setTab] = useState("tasks")
-  const [filter, setFilter] = useState<string | null>(null)
+  const [tab, setTab] = useViewTab("tasks")
+  // Selected category ids (or UNCATEGORIZED); a task shows if it matches any. Empty = all.
+  const [filter, setFilter] = useState<string[]>([])
 
-  const visible = tasks.filter((t) => !filter || t.categories.some((c) => c.id === filter))
+  const visible = tasks.filter(
+    (t) =>
+      filter.length === 0 ||
+      filter.some((f) => (f === UNCATEGORIZED ? t.categories.length === 0 : t.categories.some((c) => c.id === f))),
+  )
   const active = visible.filter((t) => !t.task.retiredAt)
   const retired = visible.filter((t) => t.task.retiredAt)
 
@@ -33,7 +40,7 @@ export function TasksPage() {
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
         </TabsList>
-        {tab === "tasks" && <DailyOverview tasks={active} />}
+        {tab === "tasks" && <DailyOverview tasks={active} filter={filter} />}
       </div>
       <TabsContent value="tasks">
         <TaskList active={active} retired={retired} filter={filter} setFilter={setFilter} />
@@ -41,7 +48,7 @@ export function TasksPage() {
       <TabsContent value="categories">
         <CategoriesList
           onShowTasks={(id) => {
-            setFilter(id)
+            setFilter([id])
             setTab("tasks")
           }}
         />
@@ -53,17 +60,19 @@ export function TasksPage() {
 interface TaskListProps {
   active: TaskView[]
   retired: TaskView[]
-  filter: string | null
-  setFilter: (id: string | null) => void
+  filter: string[]
+  setFilter: (filter: string[]) => void
 }
 
 function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
-  const { tasks, categories, today } = useAppData()
+  const { tasks, categories, today, settings } = useAppData()
   const { openTask, openBreak } = useEditors()
   const [showRetired, setShowRetired] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [amountId, setAmountId] = useState<string | null>(null)
   const find = (id: string | null) => tasks.find((t) => t.task.id === id) ?? null
+  const toggle = (id: string) => setFilter(filter.includes(id) ? filter.filter((f) => f !== id) : [...filter, id])
+  const hasUncategorized = tasks.some((t) => !t.task.retiredAt && t.categories.length === 0)
 
   const cardProps = (view: TaskView) => ({
     view,
@@ -78,10 +87,10 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
         <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
           <button
             type="button"
-            onClick={() => setFilter(null)}
+            onClick={() => setFilter([])}
             className={cn(
               "rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap",
-              filter === null ? "bg-foreground text-background" : "text-muted-foreground",
+              filter.length === 0 ? "bg-foreground text-background" : "text-muted-foreground",
             )}
           >
             All
@@ -91,10 +100,24 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
               key={c.id}
               category={c}
               size="md"
-              selected={filter === null ? undefined : filter === c.id}
-              onClick={() => setFilter(filter === c.id ? null : c.id)}
+              selected={filter.length === 0 ? undefined : filter.includes(c.id)}
+              onClick={() => toggle(c.id)}
             />
           ))}
+          {(hasUncategorized || filter.includes(UNCATEGORIZED)) && (
+            <button
+              type="button"
+              onClick={() => toggle(UNCATEGORIZED)}
+              aria-pressed={filter.includes(UNCATEGORIZED)}
+              className={cn(
+                "rounded-full border border-dashed px-2.5 py-1 text-xs font-medium whitespace-nowrap",
+                filter.includes(UNCATEGORIZED) ? "border-foreground bg-muted text-foreground" : "text-muted-foreground",
+                filter.length > 0 && !filter.includes(UNCATEGORIZED) && "opacity-50",
+              )}
+            >
+              {settings.uncategorizedName || "Other"}
+            </button>
+          )}
         </div>
       )}
 

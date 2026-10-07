@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { endOfDuration, type DurationUnit } from "@/domain/dates"
 import { createException, deleteException, updateException, type ExceptionInput } from "@/db/repo"
 import { useAppData } from "@/hooks/useAppData"
+import { BOTTOM_SHEET } from "@/lib/viewport"
 import { cn } from "@/lib/utils"
 import { CategoryChip } from "./CategoryChip"
 import { NumberInput } from "./NumberInput"
@@ -25,6 +26,8 @@ interface Props {
  * Create or edit a break. During a break, goals are reduced (or excused for fully
  * covered periods) and limits ignore entries, but progress can still be recorded.
  */
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
 export function BreakEditor({ target, onClose }: Props) {
   const { today, categories, tasks, exceptions } = useAppData()
   const [input, setInput] = useState<ExceptionInput | null>(null)
@@ -85,7 +88,7 @@ export function BreakEditor({ target, onClose }: Props) {
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
         side="bottom"
-        className="mx-auto max-h-[92dvh] max-w-lg overflow-y-auto rounded-t-2xl"
+        className={BOTTOM_SHEET}
         // Focusing the first field would pop open iOS's date picker.
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -211,7 +214,11 @@ export function BreakEditor({ target, onClose }: Props) {
                     })}
                   </div>
                 </div>
-                {empty && <p className="text-xs text-muted-foreground">Pick at least one category or task.</p>}
+                {/* Always shown (not just when empty) so the layout doesn't shift on the first pick. */}
+                <p className={cn("text-xs", empty ? "text-muted-foreground" : "text-foreground")}>
+                  {plural(input.categoryIds.length, "category", "categories")} and{" "}
+                  {plural(input.taskIds.length, "task", "tasks")} selected
+                </p>
               </>
             )}
 

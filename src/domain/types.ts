@@ -25,6 +25,8 @@ export interface Task {
   type: TaskType
   icon: string
   color: string
+  /** What's being counted, singular ("time", "minute", "page"); "" for none. */
+  unit: string
   sortOrder: number
   incrementAmounts: number[]
   displayMode: DisplayMode
@@ -35,7 +37,7 @@ export interface Task {
 }
 
 /**
- * A versioned goal. The version in effect for a period is the latest one whose
+ * A versioned goal. Track tasks have one too, for its period; their amount is unused. The version in effect for a period is the latest one whose
  * effectiveFrom is on or before the period start; there is no end date.
  */
 export interface TaskTarget {
@@ -66,6 +68,8 @@ export interface Category {
   id: string
   name: string
   color: string
+  /** Default icon for new tasks in this category; "" for none. */
+  icon: string
   sortOrder: number
   updatedAt: Timestamp
   deletedAt: Timestamp | null
@@ -102,6 +106,8 @@ export interface Settings {
   carryOverDefault: boolean
   /** How limit tasks read: "3 / 4" + "1 left", or "1 / 4 remaining" + "3 used". */
   limitDisplay: "used" | "remaining"
+  /** Name of the filter for tasks without a category. */
+  uncategorizedName: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -109,4 +115,5 @@ export const DEFAULT_SETTINGS: Settings = {
   dayStartHour: 0,
   carryOverDefault: false,
   limitDisplay: "used",
+  uncategorizedName: "Other",
 }
