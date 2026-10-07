@@ -373,3 +373,60 @@ async fn cors_allows_only_the_app() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn deleting_an_account_removes_everything() {
+    let app = TestApp::new().await;
+    let blake = app.register("blake", PASSWORD).await;
+    let sam = app.register("sam", PASSWORD).await;
+    app.post("/friends/sam/request", Some(&blake), json!({}))
+        .await;
+    app.post("/friends/blake/accept", Some(&sam), json!({}))
+        .await;
+    app.post("/sync", Some(&blake), json!({ "cursor": 0, "changes": { "tasks": [{ "id": "t1", "name": "Run", "type": "accumulate",
+        "createdAt": "2026-10-01T00:00:00.000Z", "updatedAt": "2026-10-01T00:00:00.000Z" }] } })).await;
+
+    let (status, _) = app
+        .call(
+            Method::DELETE,
+            "/me",
+            Some(&blake),
+            Some(json!({ "password": "wrong wrong wrong" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = app
+        .call(
+            Method::DELETE,
+            "/me",
+            Some(&blake),
+            Some(json!({ "password": PASSWORD })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        app.get("/me", Some(&blake)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        app.get("/friends", Some(&sam)).await.1["friends"],
+        json!([])
+    );
+    for table in ["sync_rows", "sessions", "friendships"] {
+        let left: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM {table} WHERE {}",
+            if table == "friendships" {
+                "1"
+            } else {
+                "user_id NOT IN (SELECT id FROM users)"
+            }
+        ))
+        .fetch_one(&app.state.db)
+        .await
+        .unwrap();
+        assert_eq!(left, 0, "{table}");
+    }
+    // The username can be used again.
+    app.register("blake", PASSWORD).await;
+}

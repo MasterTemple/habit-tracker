@@ -2,6 +2,7 @@ import { DownloadIcon, Share2Icon, Trash2Icon, UploadIcon } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 import { AccountSection } from "@/components/AccountSection"
+import { DeleteAccount } from "@/components/DeleteAccount"
 import { NotificationsSection } from "@/components/NotificationsSection"
 import { PageHeader } from "@/components/PageHeader"
 import { ShareSheet } from "@/components/ShareSheet"
@@ -219,6 +220,7 @@ export function SettingsPage() {
             <Button variant="destructive" onClick={() => setErasing("everywhere")}>
               <Trash2Icon /> Erase everywhere…
             </Button>
+            <DeleteAccount />
           </>
         ) : (
           <Button variant="destructive" onClick={() => setErasing("device")}>

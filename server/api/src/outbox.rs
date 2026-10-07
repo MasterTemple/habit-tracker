@@ -154,3 +154,16 @@ pub async fn process_due(state: &AppState) -> usize {
     }
     sent
 }
+
+/// Deliveries finished (sent, failed, or gone) more than 30 days ago are forgotten.
+/// (The inbox keeps its own copy of every notice.)
+pub async fn prune(state: &AppState) {
+    let cutoff = timestamp(state.clock.now() - TimeDelta::days(30));
+    if let Err(e) = sqlx::query("DELETE FROM outbox WHERE status != 'pending' AND created_at < ?")
+        .bind(cutoff)
+        .execute(&state.db)
+        .await
+    {
+        tracing::error!(error = %e, "outbox: prune failed");
+    }
+}

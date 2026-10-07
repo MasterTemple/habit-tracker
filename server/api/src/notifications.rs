@@ -41,6 +41,14 @@ pub async fn notify(
     channels: &[Channel],
 ) -> ApiResult<usize> {
     let now = state.clock.now();
+    // The recipient may have deleted their account since (e.g. a saved alert snapshot).
+    let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?;
+    if exists.is_none() {
+        return Ok(0);
+    }
     let inbox_id = uuid::Uuid::now_v7().to_string();
     let inserted = sqlx::query(
         "INSERT INTO inbox (id, user_id, kind, title, body, data, dedupe_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)

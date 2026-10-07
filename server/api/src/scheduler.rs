@@ -30,6 +30,7 @@ pub fn spawn(state: AppState) {
                 tracing::error!(error = %e, "scheduler tick failed");
             }
             outbox::process_due(&state).await;
+            outbox::prune(&state).await;
             tokio::time::sleep(Duration::from_secs(30)).await;
         }
     });

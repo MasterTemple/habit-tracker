@@ -25,7 +25,7 @@ pub fn router() -> Router<AppState> {
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
-        .route("/me", get(me).patch(update_me))
+        .route("/me", get(me).patch(update_me).delete(delete_account))
         .route("/me/password", post(change_password))
         .route("/me/email/test", post(send_test_email))
 }
@@ -288,5 +288,35 @@ async fn send_test_email(State(state): State<AppState>, auth: AuthUser) -> ApiRe
         .send(&job)
         .await
         .map_err(|e| ApiError::BadRequest(format!("Sending failed: {e}")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct DeleteAccount {
+    password: String,
+}
+
+/// Permanently deletes the account and everything the server has for it: synced data,
+/// sessions, devices, inbox, deliveries, friendships, and the alert rules others see.
+async fn delete_account(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<DeleteAccount>,
+) -> ApiResult<StatusCode> {
+    let now = state.clock.now();
+    state.limiter.check(&auth.user_id, now)?;
+    let hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = ?")
+        .bind(&auth.user_id)
+        .fetch_one(&state.db)
+        .await?;
+    if !verify_password(req.password, Some(hash)).await? {
+        state.limiter.record_failure(&auth.user_id, now);
+        return Err(ApiError::BadCredentials);
+    }
+    // Every table references users with ON DELETE CASCADE; friendships too.
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(&auth.user_id)
+        .execute(&state.db)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
