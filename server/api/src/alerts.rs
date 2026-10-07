@@ -729,18 +729,19 @@ async fn announce_rule_changes(
     // Deleted rules: tell anyone who was getting them, then forget the rule.
     for (key, value) in previous.iter().filter(|(k, _)| !seen.contains(k)) {
         if let Ok(before) = serde_json::from_str::<RuleSnapshot>(value)
-            && before.enabled {
-                for r in &before.recipients {
-                    let body = format!("{actor} turned off alerts about {}", before.what);
-                    notify(
-                        state,
-                        r,
-                        tell(r.clone(), body, format!("rule-deleted:{key}")),
-                        &[Channel::Push],
-                    )
-                    .await?;
-                }
+            && before.enabled
+        {
+            for r in &before.recipients {
+                let body = format!("{actor} turned off alerts about {}", before.what);
+                notify(
+                    state,
+                    r,
+                    tell(r.clone(), body, format!("rule-deleted:{key}")),
+                    &[Channel::Push],
+                )
+                .await?;
             }
+        }
         sqlx::query("DELETE FROM job_state WHERE user_id = ? AND key = ?")
             .bind(user_id)
             .bind(key)
