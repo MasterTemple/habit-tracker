@@ -10,7 +10,7 @@ import { deleteContact, saveContact, type Draft } from "@/db/repo"
 import type { Contact, Relationship } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { RELATIONSHIPS } from "@/lib/labels"
-import { BOTTOM_SHEET } from "@/lib/viewport"
+import { SHEET } from "@/lib/viewport"
 
 /** "new" or a contact id; null when closed. */
 export type ContactTarget = "new" | string
@@ -30,7 +30,7 @@ const BLANK: Draft<Contact> = {
 export function ContactEditor({ target, onClose }: { target: ContactTarget | null; onClose: () => void }) {
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className={BOTTOM_SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
+      <SheetContent side="top" className={SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
         {target && <Form target={target} onDone={onClose} />}
       </SheetContent>
     </Sheet>

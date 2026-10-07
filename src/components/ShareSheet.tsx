@@ -6,14 +6,14 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { exportTemplate } from "@/db/repo"
 import { useAppData } from "@/hooks/useAppData"
 import { saveJson } from "@/lib/files"
-import { BOTTOM_SHEET } from "@/lib/viewport"
+import { SHEET } from "@/lib/viewport"
 import { TaskIcon } from "./TaskIcon"
 
 /** Pick tasks and/or categories to share as a file, without any entries. */
 export function ShareSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="bottom" className={BOTTOM_SHEET}>
+      <SheetContent side="top" className={SHEET}>
         <SheetHeader>
           <SheetTitle>Share tasks</SheetTitle>
           <SheetDescription>

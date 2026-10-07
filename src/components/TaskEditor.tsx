@@ -21,7 +21,7 @@ import {
 import type { DisplayMode, Period, TaskType } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { COLORS, nextColor } from "@/lib/icons"
-import { BOTTOM_SHEET } from "@/lib/viewport"
+import { SHEET } from "@/lib/viewport"
 import { cn } from "@/lib/utils"
 import { ButtonAmounts } from "./ButtonAmounts"
 import { CategoryChip } from "./CategoryChip"
@@ -169,7 +169,7 @@ export function TaskEditor({ target, onClose }: Props) {
 
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className={BOTTOM_SHEET}>
+      <SheetContent side="top" className={SHEET}>
         <SheetHeader>
           <SheetTitle>{TITLES[mode]}</SheetTitle>
           <SheetDescription className={cn(!description && "sr-only")}>{description ?? "Task settings"}</SheetDescription>

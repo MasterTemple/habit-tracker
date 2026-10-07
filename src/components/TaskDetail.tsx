@@ -12,7 +12,7 @@ import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { formatTime } from "@/domain/schedule"
 import { breakDates, breakScopeNames } from "@/lib/breaks"
 import { goalText, progressPercent, statusText } from "@/lib/format"
-import { BOTTOM_SHEET } from "@/lib/viewport"
+import { SHEET } from "@/lib/viewport"
 import { cn } from "@/lib/utils"
 import { TaskIcon } from "./TaskIcon"
 
@@ -30,7 +30,7 @@ interface Props {
 export function TaskDetail({ view, today, onClose, ...actions }: Props) {
   return (
     <Sheet open={!!view} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className={BOTTOM_SHEET}>
+      <SheetContent side="top" className={SHEET}>
         {view && <Detail view={view} today={today} {...actions} />}
       </SheetContent>
     </Sheet>

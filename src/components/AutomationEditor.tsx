@@ -13,7 +13,7 @@ import { DEFAULT_SCHEDULE } from "@/domain/schedule"
 import type { Automation, Period } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { CHANNEL_OPTIONS, EVENT_OPTIONS } from "@/lib/labels"
-import { BOTTOM_SHEET } from "@/lib/viewport"
+import { SHEET } from "@/lib/viewport"
 import { NumberInput } from "./NumberInput"
 import { ContactPicker, isEmptyScope, MultiChips, ScopePicker } from "./pickers"
 import { ScheduleFields } from "./ScheduleFields"
@@ -56,7 +56,7 @@ export function shortcutLink(token: string) {
 export function AutomationEditor({ target, onClose }: { target: AutomationTarget | null; onClose: () => void }) {
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className={BOTTOM_SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
+      <SheetContent side="top" className={SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
         {/* Content unmounts on close, so each opening starts from the saved values. */}
         {target && <Form target={target} onDone={onClose} />}
       </SheetContent>

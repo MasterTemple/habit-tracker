@@ -6,8 +6,6 @@ import { Label } from "@/components/ui/label"
 import { createCategory, updateCategory } from "@/db/repo"
 import { useAppData } from "@/hooks/useAppData"
 import { COLORS, nextColor } from "@/lib/icons"
-import { cn } from "@/lib/utils"
-import { CENTERED_DIALOG } from "@/lib/viewport"
 import { ColorPicker } from "./ColorPicker"
 import { IconPicker } from "./IconPicker"
 
@@ -45,7 +43,7 @@ export function CategoryEditor({ target, onClose }: Props) {
 
   return (
     <Dialog open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className={cn("max-w-sm", CENTERED_DIALOG)}>
+      <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{existing ? "Edit category" : "New category"}</DialogTitle>
           <DialogDescription>Categories group tasks. Use them for priorities too (High, Medium, …).</DialogDescription>

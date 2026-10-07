@@ -25,10 +25,10 @@ export function trackVisualViewport() {
   update()
 }
 
-/** Classes for bottom sheets: sit on top of the keyboard and fit the visible area. */
-export const BOTTOM_SHEET =
-  "mx-auto max-w-lg overflow-y-auto overscroll-contain rounded-t-2xl data-[side=bottom]:bottom-(--kb-inset,0px) max-h-[calc(var(--vv-height,100dvh)*0.92)]"
-
-/** Classes for centered dialogs: center in the visible area and scroll if taller. */
-export const CENTERED_DIALOG =
-  "top-[calc(var(--vv-top,0px)+var(--vv-height,100dvh)/2)] max-h-[calc(var(--vv-height,100dvh)-2rem)] overflow-y-auto overscroll-contain"
+/**
+ * Classes for sheets. They open from the top of the screen (the keyboard is at the
+ * bottom), start below the status bar / notch, and fit inside the visible area, so the
+ * field being typed in stays on screen above the keyboard.
+ */
+export const SHEET =
+  "mx-auto max-w-lg overflow-y-auto overscroll-contain rounded-b-2xl pt-[env(safe-area-inset-top)] data-[side=top]:top-(--vv-top,0px) max-h-[calc(var(--vv-height,100dvh)*0.92)]"

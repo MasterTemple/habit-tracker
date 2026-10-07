@@ -9,7 +9,7 @@ import { deleteShare, newToken, saveShare, type Draft } from "@/db/repo"
 import type { Share } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { CHANNEL_OPTIONS, EVENT_OPTIONS } from "@/lib/labels"
-import { BOTTOM_SHEET } from "@/lib/viewport"
+import { SHEET } from "@/lib/viewport"
 import { Field, SwitchRow } from "./AutomationEditor"
 import { ContactPicker, isEmptyScope, MultiChips, ScopePicker } from "./pickers"
 
@@ -36,7 +36,7 @@ function blank(kind: Share["kind"]): Draft<Share> {
 export function ShareEditor({ target, onClose }: { target: ShareTarget | null; onClose: () => void }) {
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className={BOTTOM_SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
+      <SheetContent side="top" className={SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
         {target && <Form target={target} onDone={onClose} />}
       </SheetContent>
     </Sheet>

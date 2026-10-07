@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { endOfDuration, type DurationUnit } from "@/domain/dates"
 import { createException, deleteException, updateException, type ExceptionInput } from "@/db/repo"
 import { useAppData } from "@/hooks/useAppData"
-import { BOTTOM_SHEET } from "@/lib/viewport"
+import { SHEET } from "@/lib/viewport"
 import { NumberInput } from "./NumberInput"
 import { isEmptyScope, ScopePicker } from "./pickers"
 
@@ -76,8 +76,8 @@ export function BreakEditor({ target, onClose }: Props) {
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
-        side="bottom"
-        className={BOTTOM_SHEET}
+        side="top"
+        className={SHEET}
         // Focusing the first field would pop open iOS's date picker.
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

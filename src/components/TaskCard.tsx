@@ -285,7 +285,8 @@ function DeleteTaskDialog({
         <DialogHeader>
           <DialogTitle>Delete “{name}”?</DialogTitle>
           <DialogDescription>
-            This permanently deletes the task and {entries === 1 ? "its 1 entry" : `all ${entries} of its entries`}, and
+            This permanently deletes the task
+            {entries === 0 ? "" : entries === 1 ? " and its 1 entry" : ` and all ${entries} of its entries`}, and
             removes it from breaks, reminders, and sharing. It can't be undone.
             {!retired && " To hide it but keep its history, retire it instead."}
           </DialogDescription>

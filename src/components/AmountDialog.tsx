@@ -6,8 +6,6 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { recordEvent } from "@/db/repo"
 import type { TaskView } from "@/hooks/useAppData"
-import { cn } from "@/lib/utils"
-import { CENTERED_DIALOG } from "@/lib/viewport"
 import { NumberInput } from "./NumberInput"
 
 interface Props {
@@ -19,7 +17,7 @@ interface Props {
 export function AmountDialog({ view, onClose }: Props) {
   return (
     <Dialog open={!!view} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className={cn("max-w-sm", CENTERED_DIALOG)}>
+      <DialogContent className="max-w-sm">
         {view && <AmountForm key={view.task.id} view={view} onDone={onClose} />}
       </DialogContent>
     </Dialog>
