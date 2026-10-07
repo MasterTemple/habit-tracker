@@ -16,6 +16,15 @@ secure context (needed for service workers, `crypto`, notifications). Accept the
 on the phone. For a real cert — needed for "Add to Home Screen" to install the service worker on iOS —
 use `tailscale serve` or a `cloudflared` tunnel pointed at the dev/preview server.
 
+## Deploy
+
+Pushing to `main` runs `.github/workflows/deploy.yml`, which typechecks, tests, builds with
+`BASE_PATH=/<repo>/`, and publishes `dist/` to GitHub Pages. To build for a sub-path locally:
+`BASE_PATH=/habit-tracker/ bun run build`.
+
+Data lives in the browser's IndexedDB for that exact origin, so moving between the dev server and the
+deployed site means using Export / Import in Settings.
+
 ## Layout
 
 ```
