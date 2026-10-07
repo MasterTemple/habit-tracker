@@ -51,3 +51,31 @@ it("upgrades v4 entries with a local time derived from their timestamp", async (
   expect((await db.tasks.get("t"))?.dueTime).toBeNull()
   db.close()
 })
+
+it("moves task categories onto tasks and marks everything unsynced (v6)", async () => {
+  const old = new Dexie("upgrade-v6")
+  old.version(5).stores({
+    tasks: "id, sortOrder, updatedAt",
+    taskCategories: "[taskId+categoryId], taskId, categoryId",
+    settings: "key",
+  })
+  await old.table("tasks").bulkAdd([
+    { id: "a", name: "A", sortOrder: 0, updatedAt: "" },
+    { id: "b", name: "B", sortOrder: 1, updatedAt: "" },
+  ])
+  await old.table("taskCategories").bulkAdd([
+    { taskId: "a", categoryId: "c1" },
+    { taskId: "a", categoryId: "c2" },
+  ])
+  await old.table("settings").put({ key: "settings", weekStartsOn: 1 })
+  old.close()
+
+  const db = new HabitDB("upgrade-v6")
+  expect((await db.tasks.get("a"))?.categoryIds).toEqual(["c1", "c2"])
+  expect((await db.tasks.get("b"))?.categoryIds).toEqual([])
+  expect(await db.tasks.where("categoryIds").equals("c2").primaryKeys()).toEqual(["a"])
+  expect(await db.tasks.where("dirty").equals(1).count()).toBe(2)
+  expect((await db.settings.get("settings"))?.updatedAt).toBeTruthy()
+  expect(db.tables.map((t) => t.name)).not.toContain("taskCategories")
+  db.close()
+})

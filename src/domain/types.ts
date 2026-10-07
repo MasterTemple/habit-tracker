@@ -42,6 +42,8 @@ export interface Task {
   updatedAt: Timestamp
   retiredAt: Timestamp | null
   createdFromId: string | null
+  /** Categories the task is in (stored on the task so it syncs as one row). */
+  categoryIds: string[]
 }
 
 /**
@@ -85,11 +87,6 @@ export interface Category {
   sortOrder: number
   updatedAt: Timestamp
   deletedAt: Timestamp | null
-}
-
-export interface TaskCategory {
-  taskId: string
-  categoryId: string
 }
 
 /**

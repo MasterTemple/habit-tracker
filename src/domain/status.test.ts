@@ -31,6 +31,7 @@ function task(type: TaskType, createdAt = "2026-01-01T12:00:00"): Task {
     updatedAt: createdAt,
     retiredAt: null,
     createdFromId: null,
+    categoryIds: [],
   }
 }
 

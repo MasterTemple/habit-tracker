@@ -1,5 +1,5 @@
 import { CalendarDaysIcon, ListChecksIcon, SettingsIcon, UsersIcon } from "lucide-react"
-import { useRef } from "react"
+import { useEffect, useRef } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { AppDataProvider } from "@/hooks/useAppData"
 import { EditorsProvider } from "@/hooks/useEditors"
@@ -7,6 +7,7 @@ import { NavProvider, useNav, type PageId } from "@/hooks/useNav"
 import { useShortcutLinks } from "@/hooks/useShortcutLinks"
 import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/lib/utils"
+import { startAutoSync } from "@/sync/engine"
 import { SchedulePage } from "@/pages/SchedulePage"
 import { SettingsPage } from "@/pages/SettingsPage"
 import { SocialPage } from "@/pages/SocialPage"
@@ -38,6 +39,7 @@ function Shell() {
   const main = useRef<HTMLElement>(null)
   useSwipe(main, step)
   useShortcutLinks()
+  useEffect(() => startAutoSync(), [])
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-background">

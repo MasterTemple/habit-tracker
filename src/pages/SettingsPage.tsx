@@ -1,6 +1,7 @@
 import { DownloadIcon, Share2Icon, Trash2Icon, UploadIcon } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
+import { AccountSection } from "@/components/AccountSection"
 import { PageHeader } from "@/components/PageHeader"
 import { ShareSheet } from "@/components/ShareSheet"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ import {
 } from "@/db/repo"
 import type { WeekStart } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
+import { useSync } from "@/hooks/useSync"
 import { saveJson } from "@/lib/files"
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -35,7 +37,8 @@ export function SettingsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [sharing, setSharing] = useState(false)
-  const [erasing, setErasing] = useState(false)
+  const [erasing, setErasing] = useState<"device" | "everywhere" | null>(null)
+  const signedIn = !!useSync()?.account?.token
   const [eraseConfirmed, setEraseConfirmed] = useState(false)
   // Remounts the form fields after an erase so they show the reset values.
   const [resetKey, setResetKey] = useState(0)
@@ -75,6 +78,10 @@ export function SettingsPage() {
   return (
     <div key={resetKey} className="flex flex-col gap-6">
       <PageHeader title="Settings" />
+
+      <Section title="Account & sync">
+        <AccountSection />
+      </Section>
 
       <Section title="Profile">
         <p className="-mt-1 text-xs text-muted-foreground">
@@ -186,8 +193,10 @@ export function SettingsPage() {
           />
         </div>
         <p className="text-xs text-muted-foreground">
-          Data is stored only on this device. Export regularly as a backup. Import accepts a backup or a shared task
-          file.
+          {signedIn
+            ? "Your data syncs to the server and your other devices. Export makes a file backup you keep yourself."
+            : "Data is stored only on this device. Export regularly as a backup, or sign in above to sync."}{" "}
+          Import accepts a backup or a shared task file.
         </p>
         <Button variant="outline" onClick={() => setSharing(true)}>
           <Share2Icon /> Share tasks…
@@ -195,20 +204,34 @@ export function SettingsPage() {
       </Section>
 
       <Section title="Danger zone">
-        <Button variant="destructive" onClick={() => setErasing(true)}>
-          <Trash2Icon /> Erase all data…
-        </Button>
+        {signedIn ? (
+          <>
+            <Button variant="destructive" onClick={() => setErasing("device")}>
+              <Trash2Icon /> Erase this device…
+            </Button>
+            <Button variant="destructive" onClick={() => setErasing("everywhere")}>
+              <Trash2Icon /> Erase everywhere…
+            </Button>
+          </>
+        ) : (
+          <Button variant="destructive" onClick={() => setErasing("device")}>
+            <Trash2Icon /> Erase all data…
+          </Button>
+        )}
       </Section>
 
       <ShareSheet open={sharing} onClose={() => setSharing(false)} />
 
-      <Dialog open={erasing} onOpenChange={setErasing}>
+      <Dialog open={!!erasing} onOpenChange={(o) => !o && setErasing(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Erase all data?</DialogTitle>
+            <DialogTitle>{erasing === "everywhere" ? "Erase everywhere?" : signedIn ? "Erase this device?" : "Erase all data?"}</DialogTitle>
             <DialogDescription>
-              Permanently deletes every task, entry, category, break, automation, friend, and setting on this device.
-              This can't be undone.
+              {erasing === "everywhere"
+                ? "Permanently deletes every task, entry, category, break, automation, friend, and setting on this device, on the server, and on every device signed in to your account. This can't be undone."
+                : signedIn
+                  ? "Deletes everything on this device and signs it out. Your data stays on the server and your other devices; sign in again to get it back."
+                  : "Permanently deletes every task, entry, category, break, automation, friend, and setting on this device. This can't be undone."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2">
@@ -223,8 +246,8 @@ export function SettingsPage() {
               variant="destructive"
               disabled={!eraseConfirmed}
               onClick={async () => {
-                await resetAll()
-                setErasing(false)
+                await resetAll(erasing ?? "device")
+                setErasing(null)
                 setEraseConfirmed(false)
                 setResetKey((k) => k + 1)
                 toast("All data erased")

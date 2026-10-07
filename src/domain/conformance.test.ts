@@ -50,6 +50,7 @@ function task(type: TaskType, extra: Partial<Task> = {}): Task {
     updatedAt: "2026-01-01T12:00:00.000Z",
     retiredAt: null,
     createdFromId: null,
+    categoryIds: [],
     ...extra,
   }
 }

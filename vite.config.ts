@@ -14,7 +14,14 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, './src') },
   },
-  server: { host: true },
+  server: {
+    host: true,
+    // In development, /api goes to a local sync server (cd server && cargo run -p habit-api),
+    // so the app and the phone on the same Wi-Fi reach it without CORS or mixed content.
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8080', rewrite: (path) => path.replace(/^\/api/, '') },
+    },
+  },
   test: {
     environment: 'node',
   },

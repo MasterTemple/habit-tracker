@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto"
 import { beforeEach, describe, expect, it } from "vitest"
-import { db } from "./db"
+import { db, markRemote } from "./db"
 import {
   copyAndRetire,
   createCategory,
@@ -313,4 +313,85 @@ describe("repo", () => {
     expect(e.timeZone).toBe("")
     expect((await db.tasks.get(id))?.dueTime).toBeNull()
   })
+
+  describe("sync bookkeeping", () => {
+    const dirtyIds = async (table: "tasks" | "events" | "targets" | "settings") =>
+      (await db.table(table).where("dirty").equals(1).toArray()).map((r) => r.id ?? r.key)
+
+    it("marks created and edited rows as unsynced", async () => {
+      const id = await createTask(input)
+      expect(await dirtyIds("tasks")).toEqual([id])
+      await db.tasks.update(id, { dirty: 0 } as never) // pretend it synced (as a local write, it's re-marked)
+      await markSynced("tasks", id)
+      expect(await dirtyIds("tasks")).toEqual([])
+      await updateTask(id, { ...input, name: "Renamed" })
+      expect(await dirtyIds("tasks")).toEqual([id])
+      await updateSettings({ weekStartsOn: 1 })
+      expect(await dirtyIds("settings")).toEqual(["settings"])
+    })
+
+    it("leaves tombstones for permanent deletes", async () => {
+      const id = await createTask(input)
+      const eventId = await recordEvent(id, 5)
+      const [target] = await db.targets.where("taskId").equals(id).toArray()
+      await deleteTask(id)
+      const tombs = (await db.tombstones.toArray()).map((t) => `${t.table}/${t.id}`).sort()
+      expect(tombs).toEqual([`events/${eventId}`, `targets/${target.id}`, `tasks/${id}`].sort())
+    })
+
+    it("does not mark rows written by sync as local changes", async () => {
+      const id = await createTask(input)
+      await markSynced("tasks", id)
+      await db.transaction("rw", db.tasks, async () => {
+        markRemote()
+        await db.tasks.update(id, { name: "From server" })
+      })
+      expect(await dirtyIds("tasks")).toEqual([])
+    })
+
+    it("erases only this device (and signs out), or everywhere (tombstones, stays signed in)", async () => {
+      const id = await createTask(input)
+      await db.account.put({ key: "account", serverUrl: "x", token: "t", username: "blake", cursor: 5, lastSyncAt: null, lastError: null })
+
+      await resetAll("everywhere")
+      expect(await db.tasks.count()).toBe(0)
+      expect(await db.account.get("account")).toBeDefined()
+      expect((await db.tombstones.toArray()).map((t) => `${t.table}/${t.id}`)).toContain(`tasks/${id}`)
+      expect(((await db.settings.get("settings")) as { dirty?: number } | undefined)?.dirty).toBe(1)
+
+      await resetAll("device")
+      expect(await db.account.get("account")).toBeUndefined()
+      expect(await db.tombstones.count()).toBe(0)
+    })
+
+    it("replace-import deletes rows missing from the file everywhere; merge doesn't", async () => {
+      const keep = await createTask({ ...input, name: "Keep" })
+      const backup = JSON.parse(JSON.stringify(await exportData()))
+      const extra = await createTask({ ...input, name: "Not in backup" })
+
+      await importData(backup, "merge")
+      expect(await db.tombstones.count()).toBe(0)
+
+      await importData(backup, "replace")
+      expect(await db.tasks.get(keep)).toBeDefined()
+      expect(await db.tasks.get(extra)).toBeUndefined()
+      expect((await db.tombstones.toArray()).map((t) => `${t.table}/${t.id}`)).toContain(`tasks/${extra}`)
+    })
+
+    it("imports pre-v6 exports with a separate task-category list", async () => {
+      const cat = await createCategory("Exercise", "#f00")
+      const id = await createTask({ ...input, categoryIds: [cat] })
+      const data = JSON.parse(JSON.stringify(await exportData()))
+      for (const t of data.tasks) delete t.categoryIds
+      await importData({ ...data, version: 5, taskCategories: [{ taskId: id, categoryId: cat }] }, "replace")
+      expect((await db.tasks.get(id))?.categoryIds).toEqual([cat])
+    })
+  })
 })
+
+async function markSynced(table: "tasks", id: string) {
+  await db.transaction("rw", db.table(table), async () => {
+    markRemote()
+    await db.table(table).update(id, { dirty: 0 })
+  })
+}

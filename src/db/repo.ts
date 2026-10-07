@@ -17,7 +17,7 @@ import {
   type TaskType,
 } from "@/domain/types"
 import type { EntityTable } from "dexie"
-import { db } from "./db"
+import { db, SYNCED_TABLES, type SyncedTable } from "./db"
 import { isExceptionV1, legacyEventTime, migrateExceptionV1 } from "./migrations"
 
 const now = () => new Date().toISOString()
@@ -43,7 +43,7 @@ export async function getSettings(): Promise<Settings> {
 
 export async function updateSettings(changes: Partial<Settings>) {
   const current = await getSettings()
-  await db.settings.put({ ...current, ...changes, key: "settings" })
+  await db.settings.put({ ...current, ...changes, key: "settings", updatedAt: now() })
 }
 
 // ---------- tasks ----------
@@ -88,7 +88,7 @@ export async function createTask(input: TaskInput, createdFromId: string | null 
   const settings = await getSettings()
   const id = uuid()
   const timestamp = now()
-  await db.transaction("rw", [db.tasks, db.targets, db.taskCategories], async () => {
+  await db.transaction("rw", [db.tasks, db.targets], async () => {
     await db.tasks.add({
       id,
       name: input.name,
@@ -105,9 +105,9 @@ export async function createTask(input: TaskInput, createdFromId: string | null 
       updatedAt: timestamp,
       retiredAt: null,
       createdFromId,
+      categoryIds: [...new Set(input.categoryIds)],
     })
     await db.targets.add(newTarget(id, input, settings))
-    await db.taskCategories.bulkAdd(input.categoryIds.map((categoryId) => ({ taskId: id, categoryId })))
   })
   return id
 }
@@ -120,7 +120,7 @@ export async function createTask(input: TaskInput, createdFromId: string | null 
  */
 export async function updateTask(id: string, input: TaskInput) {
   const settings = await getSettings()
-  await db.transaction("rw", [db.tasks, db.targets, db.taskCategories], async () => {
+  await db.transaction("rw", [db.tasks, db.targets, db.tombstones], async () => {
     const task = await db.tasks.get(id)
     if (!task) throw new Error(`Task ${id} not found`)
 
@@ -133,6 +133,7 @@ export async function updateTask(id: string, input: TaskInput) {
       dueTime: task.type === "accumulate" ? input.dueTime : null,
       incrementAmounts: input.incrementAmounts,
       displayMode: input.displayMode,
+      categoryIds: [...new Set(input.categoryIds)],
       updatedAt: now(),
     })
 
@@ -145,26 +146,36 @@ export async function updateTask(id: string, input: TaskInput) {
       current.amount !== target.amount ||
       current.carryOver !== target.carryOver
     if (changed) {
-      await db.targets.bulkDelete(targets.filter((t) => t.effectiveFrom >= target.effectiveFrom).map((t) => t.id))
+      await hardDelete(
+        "targets",
+        targets.filter((t) => t.effectiveFrom >= target.effectiveFrom).map((t) => t.id),
+      )
       await db.targets.add(target)
     }
-
-    await db.taskCategories.where("taskId").equals(id).delete()
-    await db.taskCategories.bulkAdd(input.categoryIds.map((categoryId) => ({ taskId: id, categoryId })))
   })
 }
 
 /**
- * Permanently deletes a task with its goals and entries, and removes it from breaks,
- * automations, and shares. (A hard delete: once sync exists this will need a tombstone.)
+ * Rows removed for good. Tombstones tell the sync server (and through it, other
+ * devices) to delete them too. Call inside a transaction that includes db.tombstones.
+ */
+async function hardDelete(table: SyncedTable, ids: string[]) {
+  if (ids.length === 0) return
+  await db.table(table).bulkDelete(ids)
+  const deletedAt = now()
+  await db.tombstones.bulkPut(ids.map((id) => ({ table, id, deletedAt })))
+}
+
+/**
+ * Permanently deletes a task with its goals and entries (on every synced device), and
+ * removes it from breaks, automations, and shares.
  */
 export async function deleteTask(id: string) {
-  const tables = [db.tasks, db.targets, db.events, db.taskCategories, db.exceptions, db.automations, db.shares]
+  const tables = [db.tasks, db.targets, db.events, db.tombstones, db.exceptions, db.automations, db.shares]
   await db.transaction("rw", tables, async () => {
-    await db.targets.where("taskId").equals(id).delete()
-    await db.events.where("taskId").equals(id).delete()
-    await db.taskCategories.where("taskId").equals(id).delete()
-    await db.tasks.delete(id)
+    await hardDelete("targets", await db.targets.where("taskId").equals(id).primaryKeys())
+    await hardDelete("events", await db.events.where("taskId").equals(id).primaryKeys())
+    await hardDelete("tasks", [id])
     await pruneReferences("taskIds", id)
     // Webhooks that record progress for this task have nothing left to do.
     await db.automations
@@ -191,7 +202,6 @@ export async function taskToInput(id: string): Promise<TaskInput> {
   if (!task) throw new Error(`Task ${id} not found`)
   const targets = await db.targets.where("taskId").equals(id).toArray()
   const target = currentTarget(targets, today(settings))
-  const links = await db.taskCategories.where("taskId").equals(id).toArray()
   return {
     name: task.name,
     description: task.description,
@@ -205,7 +215,7 @@ export async function taskToInput(id: string): Promise<TaskInput> {
     period: target?.period ?? "day",
     amount: target?.amount ?? 1,
     carryOver: target?.carryOver ?? settings.carryOverDefault,
-    categoryIds: links.map((l) => l.categoryId),
+    categoryIds: task.categoryIds ?? [],
   }
 }
 
@@ -217,7 +227,7 @@ export async function copyAndRetire(id: string, input: TaskInput): Promise<strin
   const original = await db.tasks.get(id)
   if (!original) throw new Error(`Task ${id} not found`)
   if (original.retiredAt) throw new Error("Can't copy and retire a task that is already retired")
-  return db.transaction("rw", [db.tasks, db.targets, db.taskCategories, db.settings], async () => {
+  return db.transaction("rw", [db.tasks, db.targets, db.settings], async () => {
     const newId = await createTask(input, id)
     await retireTask(id)
     return newId
@@ -325,9 +335,15 @@ export async function reorderCategory(activeId: string, overId: string) {
 }
 
 export async function deleteCategory(id: string) {
-  await db.transaction("rw", [db.categories, db.taskCategories, db.exceptions, db.automations, db.shares], async () => {
+  await db.transaction("rw", [db.categories, db.tasks, db.exceptions, db.automations, db.shares], async () => {
     await db.categories.update(id, { deletedAt: now(), updatedAt: now() })
-    await db.taskCategories.where("categoryId").equals(id).delete()
+    await db.tasks
+      .where("categoryIds")
+      .equals(id)
+      .modify((t) => {
+        t.categoryIds = t.categoryIds.filter((c) => c !== id)
+        t.updatedAt = now()
+      })
     await pruneReferences("categoryIds", id)
   })
 }
@@ -430,43 +446,85 @@ export function newToken(): string {
     .replace(/=+$/, "")
 }
 
-/** Erases everything on this device, settings included. */
-export async function resetAll() {
-  await db.transaction("rw", db.tables, () => Promise.all(db.tables.map((t) => t.clear())))
+/**
+ * "device": erases everything on this device, settings and sign-in included (synced
+ * data stays on the server and other devices). "everywhere": erases all data on this
+ * device and, through sync, on the server and every other signed-in device; stays signed in.
+ */
+export async function resetAll(mode: "device" | "everywhere" = "device") {
+  await db.transaction("rw", db.tables, async () => {
+    const tombstones = mode === "everywhere" ? await everyRowAsTombstone() : []
+    await Promise.all(db.tables.filter((t) => mode === "device" || t.name !== "account").map((t) => t.clear()))
+    await db.tombstones.bulkPut(tombstones)
+    if (mode === "everywhere") {
+      // Defaults replace the old settings everywhere (a tombstone would just be re-created).
+      await db.tombstones.delete(["settings", "settings"])
+      await db.settings.put({ ...DEFAULT_SETTINGS, key: "settings", updatedAt: now() })
+    }
+  })
+}
+
+async function everyRowAsTombstone() {
+  const deletedAt = now()
+  const tombstones = []
+  for (const table of SYNCED_TABLES) {
+    for (const id of await db.table(table).toCollection().primaryKeys()) {
+      tombstones.push({ table, id: String(id), deletedAt })
+    }
+  }
+  return tombstones
 }
 
 // ---------- export / import ----------
 
-export const EXPORT_VERSION = 5
+export const EXPORT_VERSION = 6
+
+/** Rows without device-only bookkeeping. */
+function clean<T>(rows: T[]): T[] {
+  return rows.map((row) => {
+    const copy = { ...row } as T & { dirty?: unknown }
+    delete copy.dirty
+    return copy
+  })
+}
 
 export async function exportData() {
+  const settings = await getSettings()
   return {
     app: "habit-tracker",
     version: EXPORT_VERSION,
     exportedAt: now(),
-    settings: await getSettings(),
-    tasks: await db.tasks.toArray(),
-    targets: await db.targets.toArray(),
-    events: await db.events.toArray(),
-    categories: await db.categories.toArray(),
-    taskCategories: await db.taskCategories.toArray(),
-    exceptions: await db.exceptions.toArray(),
-    automations: await db.automations.toArray(),
-    contacts: await db.contacts.toArray(),
-    shares: await db.shares.toArray(),
+    settings: clean([settings])[0],
+    tasks: clean(await db.tasks.toArray()),
+    targets: clean(await db.targets.toArray()),
+    events: clean(await db.events.toArray()),
+    categories: clean(await db.categories.toArray()),
+    exceptions: clean(await db.exceptions.toArray()),
+    automations: clean(await db.automations.toArray()),
+    contacts: clean(await db.contacts.toArray()),
+    shares: clean(await db.shares.toArray()),
   }
 }
 
-export type ExportData = Awaited<ReturnType<typeof exportData>>
+export type ExportData = Awaited<ReturnType<typeof exportData>> & {
+  /** Before v6, task categories were a separate list. */
+  taskCategories?: { taskId: string; categoryId: string }[]
+}
 
 /** Brings rows from older exports up to the current shape. */
 function normalizeExport(data: ExportData): ExportData {
-  if (data?.app !== "habit-tracker" || ![1, 2, 3, 4, EXPORT_VERSION].includes(data.version)) {
+  if (data?.app !== "habit-tracker" || ![1, 2, 3, 4, 5, EXPORT_VERSION].includes(data.version)) {
     throw new Error("Not a habit-tracker export, or from an unsupported version")
   }
+  const links = data.taskCategories ?? []
   return {
     ...data,
-    tasks: data.tasks.map((t) => ({ ...t, unit: t.unit ?? "", dueTime: t.dueTime ?? null })),
+    tasks: data.tasks.map((t) => ({
+      ...t,
+      unit: t.unit ?? "",
+      dueTime: t.dueTime ?? null,
+      categoryIds: t.categoryIds ?? links.filter((l) => l.taskId === t.id).map((l) => l.categoryId),
+    })),
     events: data.events.map((e) => ({ ...e, ...legacyEventTime(e) })),
     categories: data.categories.map((c) => ({ ...c, icon: c.icon ?? "" })),
     exceptions: data.exceptions.map((e) => (isExceptionV1(e) ? migrateExceptionV1(e) : e)),
@@ -474,25 +532,33 @@ function normalizeExport(data: ExportData): ExportData {
     automations: data.automations ?? [],
     contacts: data.contacts ?? [],
     shares: data.shares ?? [],
+    taskCategories: undefined,
   }
 }
 
 /**
- * "replace" wipes local data first. "merge" keeps local data and adds the file's:
- * when a row exists in both, the more recently updated one wins (events and task
- * links are combined), and local settings are kept.
+ * "replace" swaps all data for the file's (on every synced device: rows not in the file
+ * are deleted everywhere). "merge" keeps local data and adds the file's: when a row
+ * exists in both, the more recently updated one wins, and local settings are kept.
+ * Either way, the changes sync.
  */
 export async function importData(raw: ExportData, mode: "replace" | "merge" = "replace") {
   const data = normalizeExport(raw)
   await db.transaction("rw", db.tables, async () => {
     if (mode === "replace") {
-      await Promise.all(db.tables.map((t) => t.clear()))
-      await db.settings.put({ ...DEFAULT_SETTINGS, ...data.settings, key: "settings" })
+      const incoming = new Set(
+        SYNCED_TABLES.flatMap((table) =>
+          table === "settings" ? ["settings/settings"] : (data[table] as { id: string }[]).map((r) => `${table}/${r.id}`),
+        ),
+      )
+      const removed = (await everyRowAsTombstone()).filter((t) => !incoming.has(`${t.table}/${t.id}`))
+      await Promise.all(db.tables.filter((t) => t.name !== "account" && t.name !== "tombstones").map((t) => t.clear()))
+      await db.tombstones.bulkPut(removed)
+      await db.settings.put({ ...DEFAULT_SETTINGS, ...data.settings, key: "settings", updatedAt: now() })
       await db.tasks.bulkAdd(data.tasks)
       await db.targets.bulkAdd(data.targets)
       await db.events.bulkAdd(data.events)
       await db.categories.bulkAdd(data.categories)
-      await db.taskCategories.bulkAdd(data.taskCategories)
       await db.exceptions.bulkAdd(data.exceptions)
       await db.automations.bulkAdd(data.automations)
       await db.contacts.bulkAdd(data.contacts)
@@ -507,7 +573,6 @@ export async function importData(raw: ExportData, mode: "replace" | "merge" = "r
     await mergeNewest(db.automations, data.automations)
     await mergeNewest(db.contacts, data.contacts)
     await mergeNewest(db.shares, data.shares)
-    await db.taskCategories.bulkPut(data.taskCategories)
   })
 }
 

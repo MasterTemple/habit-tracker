@@ -74,7 +74,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -446,7 +447,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -836,7 +838,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -1182,7 +1185,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -1550,7 +1554,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -1918,7 +1923,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 1,
@@ -2264,7 +2270,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -2583,7 +2590,8 @@
      "createdAt": "2026-10-03T08:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -2828,7 +2836,8 @@
      "createdAt": "2026-10-01T08:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -3085,7 +3094,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -3349,7 +3359,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -3682,7 +3693,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -4015,7 +4027,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -4375,7 +4388,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -4735,7 +4749,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -5068,7 +5083,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -5401,7 +5417,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -5734,7 +5751,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -6067,7 +6085,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -6422,7 +6441,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -6777,7 +6797,8 @@
      "createdAt": "2026-10-06T08:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -6960,7 +6981,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -7279,7 +7301,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "08:30",
     "settings": {
@@ -7647,7 +7670,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "09:30",
     "settings": {
@@ -8041,7 +8065,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "settings": {
      "weekStartsOn": 0,
@@ -8422,7 +8447,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "10:00",
     "settings": {
@@ -8817,7 +8843,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "10:00",
     "settings": {
@@ -9225,7 +9252,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "02:00",
     "settings": {
@@ -9593,7 +9621,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "23:00",
     "settings": {
@@ -9975,7 +10004,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "19:00",
     "settings": {
@@ -10343,7 +10373,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "10:00",
     "settings": {
@@ -10677,7 +10708,8 @@
      "createdAt": "2026-01-01T12:00:00.000Z",
      "updatedAt": "2026-01-01T12:00:00.000Z",
      "retiredAt": null,
-     "createdFromId": null
+     "createdFromId": null,
+     "categoryIds": []
     },
     "now": "10:00",
     "settings": {

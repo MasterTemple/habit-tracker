@@ -52,8 +52,15 @@ SIGNUP_CODE=pick-one cargo run -p habit-api   # http://127.0.0.1:8080, database 
 | `SESSION_DAYS` | `90` | Sessions expire after this long unused |
 
 Endpoints: `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET`/`PATCH /me`,
-`POST /me/password`. Passwords (min 10 characters) are stored as Argon2id hashes; session tokens are stored only
+`POST /me/password`, `POST /sync`. Passwords (min 10 characters) are stored as Argon2id hashes; session tokens are stored only
 as SHA-256 hashes; failed logins lock a username for 15 minutes after 10 tries.
+
+**Sync.** Every synced row in the app carries `dirty: 1` (set automatically by Dexie hooks) until the server has
+it; permanent deletes leave tombstones. `POST /sync` sends dirty rows and tombstones and returns everything
+changed since the device's cursor, in pages. Both sides keep the newer `updatedAt` per row; the server caps
+timestamps more than 5 minutes in the future, and a tombstone beats any older version. In development the Vite
+server proxies `/api` to `127.0.0.1:8080`, so run the server with `cargo run -p habit-api` and sign in from
+Settings. Production builds take the server address from `VITE_SERVER_URL` (or the user types it).
 
 
 

@@ -72,7 +72,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     targets: await db.targets.toArray(),
     events: await db.events.filter((e) => !e.deletedAt).toArray(),
     categories: (await db.categories.orderBy("sortOrder").toArray()).filter((c) => !c.deletedAt),
-    links: await db.taskCategories.toArray(),
     exceptions: (await db.exceptions.toArray()).filter((e) => !e.deletedAt),
     automations: (await db.automations.toArray()).filter((a) => !a.deletedAt),
     contacts: (await db.contacts.toArray()).filter((c) => !c.deletedAt).sort((a, b) => a.name.localeCompare(b.name)),
@@ -85,7 +84,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     if (!raw) return null
     const categoriesById = new Map(raw.categories.map((c) => [c.id, c]))
     const tasks = raw.tasks.map((task) => {
-      const categoryIds = raw.links.filter((l) => l.taskId === task.id).map((l) => l.categoryId)
+      const categoryIds = task.categoryIds ?? []
       const ctx: TaskContext = {
         task,
         targets: raw.targets.filter((t) => t.taskId === task.id),

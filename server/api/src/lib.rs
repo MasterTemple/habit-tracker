@@ -6,6 +6,7 @@ pub mod clock;
 pub mod config;
 pub mod error;
 pub mod routes;
+pub mod sync;
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -46,7 +47,9 @@ pub async fn connect(url: &str) -> Result<SqlitePool, sqlx::Error> {
     let options = SqliteConnectOptions::from_str(url)?
         .create_if_missing(true)
         .foreign_keys(true)
-        .journal_mode(SqliteJournalMode::Wal);
+        .journal_mode(SqliteJournalMode::Wal)
+        // Concurrent syncs wait for the single SQLite writer instead of failing.
+        .busy_timeout(std::time::Duration::from_secs(10));
     // An in-memory database exists per connection, so tests use exactly one.
     let max = if url.contains(":memory:") { 1 } else { 8 };
     let pool = SqlitePoolOptions::new()
@@ -70,6 +73,7 @@ pub fn app(state: AppState) -> Router {
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]);
 
     routes::router()
+        .merge(sync::router())
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024))
         .layer(cors)

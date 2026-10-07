@@ -59,6 +59,9 @@ pub struct Task {
     pub retired_at: Option<Timestamp>,
     #[serde(default)]
     pub created_from_id: Option<String>,
+    /// Categories the task belongs to (priority order comes from the categories themselves).
+    #[serde(default)]
+    pub category_ids: Vec<String>,
 }
 
 /// A versioned goal: the version in effect at a period's start governs that period.
