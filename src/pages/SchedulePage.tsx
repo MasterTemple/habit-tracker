@@ -57,7 +57,7 @@ export function SchedulePage() {
       <TabsContent value="actions">
         <AutomationList
           kinds={["report", "export"]}
-          note="Scheduled reports and backups are saved here; they'll run once email is set up on your sync server."
+          note="Reports and backups are emailed by your sync server while you're signed in (it needs email set up, and your address in Settings → Account & sync)."
           empty="No scheduled actions. Send a weekly report to a friend, or email yourself a backup."
           onEdit={setEditing}
         />

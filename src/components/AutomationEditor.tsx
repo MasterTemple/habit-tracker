@@ -113,8 +113,8 @@ function Form({ target, onDone }: { target: AutomationTarget; onDone: () => void
               webhook_in: "Records progress when its link is opened or its web address is called.",
               webhook_out: "Your sync server posts to this URL when something happens. Needs you to be signed in.",
               reminder: "Sent by your sync server at this time in your current time zone, to devices with notifications on.",
-              report: "Saved now; scheduled reports need email, which is coming to the sync server soon.",
-              export: "Saved now; scheduled backups need email, which is coming to the sync server soon.",
+              report: "Emailed by your sync server (needs email set up there). Friends with no email address get it in their inbox.",
+              export: "Your full backup, emailed as a file you can import. Goes to your account's email if none are listed.",
             }[draft.kind]
           }
         </SheetDescription>

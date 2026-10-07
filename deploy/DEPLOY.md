@@ -67,6 +67,27 @@ gh workflow run deploy.yml
 The next build of the web app uses that server by default. Then in the app: **Settings → Account & sync →
 Create account**, with the sign-up code from `.env`. Your existing data on the phone uploads on first sign-in.
 
+## Email (optional)
+
+Reports, backups, email reminders, and alerts to people without accounts need an email provider. Any provider with
+SMTP works; add two lines to `deploy/.env` and restart (`docker compose up -d`):
+
+```sh
+SMTP_URL=smtps://USERNAME:PASSWORD@SMTP_HOST:465
+EMAIL_FROM=Habit Tracker <habits@yourdomain.com>
+```
+
+| Provider | `SMTP_URL` (check your provider's SMTP docs for current hosts and ports) |
+|---|---|
+| Resend | `smtps://resend:API_KEY@smtp.resend.com:465` |
+| Postmark | `smtp://SERVER_TOKEN:SERVER_TOKEN@smtp.postmarkapp.com:587?tls=required` |
+| Amazon SES | `smtps://SMTP_USER:SMTP_PASSWORD@email-smtp.us-east-1.amazonaws.com:465` |
+| Gmail (app password) | `smtps://you%40gmail.com:APP_PASSWORD@smtp.gmail.com:465` |
+
+Use port 465 with `smtps://`, or 587 with `smtp://…:587?tls=required`. Characters like `@` or `/` in the username or
+password must be URL-encoded (`@` → `%40`). Providers usually require `EMAIL_FROM` to be on a domain you've verified
+with them. Then in the app: **Settings → Account & sync → Email**, and **Send a test email**.
+
 ## Everyday operations
 
 | What | Command (in `/opt/habit-tracker/deploy`) |

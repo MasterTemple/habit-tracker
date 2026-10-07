@@ -33,6 +33,15 @@ impl TestApp {
         Self::with_config(Config::for_tests()).await
     }
 
+    /// With email "set up": sent mail lands in the returned mailbox.
+    pub async fn with_mailer() -> (Self, habit_api::email::MemoryMailer) {
+        let mut test = Self::new().await;
+        let mailbox = habit_api::email::MemoryMailer::default();
+        test.state.mailer = Some(Arc::new(mailbox.clone()));
+        test.router = app(test.state.clone());
+        (test, mailbox)
+    }
+
     pub async fn with_config(config: Config) -> Self {
         let db = connect("sqlite::memory:").await.expect("database");
         let clock = Arc::new(FakeClock::new(start_time()));

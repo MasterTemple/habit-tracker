@@ -27,6 +27,7 @@ pub fn router() -> Router<AppState> {
         .route("/auth/logout", post(logout))
         .route("/me", get(me).patch(update_me))
         .route("/me/password", post(change_password))
+        .route("/me/email/test", post(send_test_email))
 }
 
 async fn health() -> impl IntoResponse {
@@ -40,7 +41,12 @@ pub struct User {
     pub username: String,
     pub display_name: String,
     pub time_zone: String,
+    /// For email reminders, reports, and backups ("" = none).
+    pub email: String,
     pub created_at: String,
+    /// Whether this server can send email.
+    #[sqlx(skip)]
+    pub email_enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -50,13 +56,15 @@ pub struct SessionResponse {
 }
 
 async fn load_user(state: &AppState, id: &str) -> ApiResult<User> {
-    sqlx::query_as(
-        "SELECT id, username, display_name, time_zone, created_at FROM users WHERE id = ?",
+    let mut user: User = sqlx::query_as(
+        "SELECT id, username, display_name, time_zone, email, created_at FROM users WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(&state.db)
     .await?
-    .ok_or(ApiError::Unauthorized)
+    .ok_or(ApiError::Unauthorized)?;
+    user.email_enabled = state.mailer.is_some();
+    Ok(user)
 }
 
 fn user_agent(headers: &HeaderMap) -> String {
@@ -186,6 +194,8 @@ struct UpdateMe {
     display_name: Option<String>,
     /// The device's current IANA zone; deadlines and reminders follow it.
     time_zone: Option<String>,
+    /// "" to remove.
+    email: Option<String>,
 }
 
 async fn update_me(
@@ -196,11 +206,19 @@ async fn update_me(
     if let Some(tz) = &req.time_zone {
         validate_time_zone(tz)?;
     }
+    let email = req.email.as_deref().map(str::trim);
+    if email.is_some_and(|e| !e.is_empty() && !crate::email::looks_like_email(e)) {
+        return Err(ApiError::BadRequest(
+            "That doesn't look like an email address".into(),
+        ));
+    }
     sqlx::query(
-        "UPDATE users SET display_name = COALESCE(?, display_name), time_zone = COALESCE(?, time_zone) WHERE id = ?",
+        "UPDATE users SET display_name = COALESCE(?, display_name), time_zone = COALESCE(?, time_zone),
+           email = COALESCE(?, email) WHERE id = ?",
     )
     .bind(req.display_name.as_deref().map(str::trim))
     .bind(req.time_zone.as_deref())
+    .bind(email)
     .bind(&auth.user_id)
     .execute(&state.db)
     .await?;
@@ -245,5 +263,30 @@ async fn change_password(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Sends a test email to the account's address right away (to check the server's SMTP settings).
+async fn send_test_email(State(state): State<AppState>, auth: AuthUser) -> ApiResult<StatusCode> {
+    let Some(mailer) = &state.mailer else {
+        return Err(ApiError::Conflict(
+            "Email isn't set up on this server (SMTP_URL)".into(),
+        ));
+    };
+    let to = crate::email::user_email(&state, &auth.user_id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Add your email address first".into()))?;
+    let text = "Email from your Habit Tracker server is working. Reports, backups, and email reminders will come from this address.";
+    let job = crate::email::EmailJob {
+        to,
+        subject: "Habit Tracker: test email".into(),
+        html: Some(crate::email::html_from_text(text)),
+        text: text.into(),
+        attachments: vec![],
+    };
+    mailer
+        .send(&job)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Sending failed: {e}")))?;
     Ok(StatusCode::NO_CONTENT)
 }

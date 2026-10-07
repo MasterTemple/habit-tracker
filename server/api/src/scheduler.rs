@@ -10,10 +10,14 @@ use habit_core::types::TaskType;
 use serde_json::json;
 
 use crate::AppState;
+use crate::email::{self, EmailAttachment, EmailJob};
 use crate::error::ApiResult;
 use crate::notifications::{Channel, Notice, notify};
 use crate::outbox;
-use crate::userdata::{self, Reminder, UserData};
+use crate::reports;
+use crate::userdata::{self, Reminder, ScheduledAction, UserData};
+use base64::Engine;
+use habit_core::types::Schedule;
 
 /// A reminder that comes due while the server is down fires late only if this recent.
 const STALE_AFTER: TimeDelta = TimeDelta::hours(2);
@@ -35,7 +39,8 @@ pub fn spawn(state: AppState) {
 pub async fn tick(state: &AppState) -> ApiResult<()> {
     let users: Vec<String> = sqlx::query_scalar(
         "SELECT DISTINCT user_id FROM sync_rows
-         WHERE tbl = 'automations' AND deleted = 0 AND json_extract(data, '$.kind') = 'reminder'",
+         WHERE tbl = 'automations' AND deleted = 0
+           AND json_extract(data, '$.kind') IN ('reminder', 'report', 'export')",
     )
     .fetch_all(&state.db)
     .await?;
@@ -44,6 +49,11 @@ pub async fn tick(state: &AppState) -> ApiResult<()> {
         for reminder in data.reminders() {
             if let Err(e) = check_reminder(state, &user_id, &data, &reminder).await {
                 tracing::error!(error = %e, reminder = %reminder.id, "reminder failed");
+            }
+        }
+        for action in data.scheduled_actions() {
+            if let Err(e) = check_action(state, &user_id, &data, &action).await {
+                tracing::error!(error = %e, action = %action.id, "scheduled action failed");
             }
         }
     }
@@ -75,6 +85,34 @@ pub async fn set_state(state: &AppState, user_id: &str, key: &str, value: &str) 
     Ok(())
 }
 
+/// When a schedule (tracked under `key`) should fire now: its next time after the last
+/// check has arrived on the user's wall clock, and isn't stale. Records the check. A
+/// newly seen schedule starts counting from now (nothing in the past fires).
+async fn due_now(
+    state: &AppState,
+    user_id: &str,
+    key: &str,
+    schedule: &Schedule,
+    now: NaiveDateTime,
+) -> ApiResult<Option<NaiveDateTime>> {
+    let last = get_state(state, user_id, key)
+        .await?
+        .and_then(|v| NaiveDateTime::parse_from_str(&v, LOCAL_FORMAT).ok());
+    let stamp = now.format(LOCAL_FORMAT).to_string();
+    let Some(last) = last else {
+        set_state(state, user_id, key, &stamp).await?;
+        return Ok(None);
+    };
+    let Some(due) = next_run(schedule, last) else {
+        return Ok(None);
+    };
+    if due > now {
+        return Ok(None);
+    }
+    set_state(state, user_id, key, &stamp).await?;
+    Ok((now - due <= STALE_AFTER).then_some(due))
+}
+
 /// Fires a reminder when its next time (after the last check) has arrived, on the
 /// user's current wall clock. A newly seen reminder starts counting from now.
 async fn check_reminder(
@@ -83,34 +121,12 @@ async fn check_reminder(
     data: &UserData,
     reminder: &Reminder,
 ) -> ApiResult<()> {
-    let key = format!("reminder:{}", reminder.id);
     let now = data.local_now(state.clock.now());
-    let last = get_state(state, user_id, &key)
-        .await?
-        .and_then(|v| NaiveDateTime::parse_from_str(&v, LOCAL_FORMAT).ok());
-    let Some(last) = last else {
-        return set_state(
-            state,
-            user_id,
-            &key,
-            &now.at.format(LOCAL_FORMAT).to_string(),
-        )
-        .await;
-    };
-    let Some(due) = next_run(&reminder.schedule, last) else {
+    let key = format!("reminder:{}", reminder.id);
+    let Some(due) = due_now(state, user_id, &key, &reminder.schedule, now.at).await? else {
         return Ok(());
     };
-    if due > now.at {
-        return Ok(());
-    }
-    set_state(
-        state,
-        user_id,
-        &key,
-        &now.at.format(LOCAL_FORMAT).to_string(),
-    )
-    .await?;
-    if !reminder.enabled || now.at - due > STALE_AFTER {
+    if !reminder.enabled {
         return Ok(());
     }
 
@@ -148,12 +164,39 @@ async fn check_reminder(
         .iter()
         .filter_map(|c| (c == "push").then_some(Channel::Push))
         .collect();
+    let title: String = if reminder.name.trim().is_empty() {
+        "Reminder".into()
+    } else {
+        reminder.name.trim().into()
+    };
+    if reminder.channels.iter().any(|c| c == "email")
+        && let Some(to) = email::user_email(state, user_id).await?
+    {
+        let job = EmailJob {
+            to,
+            subject: title.clone(),
+            html: Some(email::html_from_text(&body)),
+            text: body.clone(),
+            attachments: vec![],
+        };
+        email::queue(
+            state,
+            user_id,
+            job,
+            &format!(
+                "reminder-email:{}:{}",
+                reminder.id,
+                due.format(LOCAL_FORMAT)
+            ),
+        )
+        .await?;
+    }
     notify(
         state,
         user_id,
         Notice {
             kind: "reminder".into(),
-            title: if reminder.name.trim().is_empty() { "Reminder".into() } else { reminder.name.trim().into() },
+            title,
             body,
             url: Some("./".into()),
             dedupe: format!("reminder:{}:{}", reminder.id, due.format(LOCAL_FORMAT)),
@@ -162,5 +205,130 @@ async fn check_reminder(
         &channels,
     )
     .await?;
+    Ok(())
+}
+
+/// Scheduled reports and backups, by email (needs email set up on the server).
+async fn check_action(
+    state: &AppState,
+    user_id: &str,
+    data: &UserData,
+    action: &ScheduledAction,
+) -> ApiResult<()> {
+    let now = data.local_now(state.clock.now());
+    let key = format!("action:{}", action.id);
+    let Some(due) = due_now(state, user_id, &key, &action.schedule, now.at).await? else {
+        return Ok(());
+    };
+    if !action.enabled {
+        return Ok(());
+    }
+    let when = due.format(LOCAL_FORMAT).to_string();
+    let actor = data.actor();
+    let mut recipients: Vec<String> = action
+        .emails
+        .iter()
+        .filter(|e| email::looks_like_email(e))
+        .cloned()
+        .collect();
+    let mut friends_without_email = Vec::new();
+    for contact in data.contacts.iter().filter(|c| {
+        c.get("id")
+            .and_then(|v| v.as_str())
+            .is_some_and(|id| action.contact_ids.iter().any(|x| x == id))
+            && c.get("deletedAt").is_none_or(|d| d.is_null())
+    }) {
+        match contact
+            .get("email")
+            .and_then(|e| e.as_str())
+            .filter(|e| email::looks_like_email(e))
+        {
+            Some(address) => recipients.push(address.to_string()),
+            None => friends_without_email.extend(
+                contact
+                    .get("username")
+                    .and_then(|u| u.as_str())
+                    .map(str::to_string),
+            ),
+        }
+    }
+
+    match action.kind.as_str() {
+        "report" => {
+            let (subject, text) =
+                reports::weekly_style_report(data, &action.scope, action.period, &now, &actor);
+            if recipients.is_empty() && friends_without_email.is_empty() {
+                recipients.extend(email::user_email(state, user_id).await?);
+            }
+            for to in recipients {
+                let job = EmailJob {
+                    to: to.clone(),
+                    subject: subject.clone(),
+                    html: Some(email::html_from_text(&text)),
+                    text: text.clone(),
+                    attachments: vec![],
+                };
+                email::queue(
+                    state,
+                    user_id,
+                    job,
+                    &format!("report:{}:{when}:{to}", action.id),
+                )
+                .await?;
+            }
+            // Friends with accounts but no email address get it in their inbox.
+            for username in friends_without_email {
+                let username = username.trim().trim_start_matches('@').to_lowercase();
+                let friend: Option<String> =
+                    sqlx::query_scalar("SELECT id FROM users WHERE username = ?")
+                        .bind(&username)
+                        .fetch_optional(&state.db)
+                        .await?;
+                if let Some(friend) = friend
+                    && crate::friends::are_friends(&state.db, user_id, &friend).await?
+                {
+                    let notice = Notice {
+                        kind: "report".into(),
+                        title: subject.clone(),
+                        body: text.clone(),
+                        url: None,
+                        dedupe: format!("report:{}:{when}:{friend}", action.id),
+                        data: json!({ "from": data.username }),
+                    };
+                    notify(state, &friend, notice, &[Channel::Push]).await?;
+                }
+            }
+        }
+        "export" => {
+            if recipients.is_empty() {
+                recipients.extend(email::user_email(state, user_id).await?);
+            }
+            let backup = reports::backup_json(&state.db, user_id, state.clock.now()).await?;
+            let date = now.today;
+            for to in recipients {
+                let job = EmailJob {
+                    to: to.clone(),
+                    subject: format!("Habit Tracker backup ({date})"),
+                    text: format!(
+                        "Your scheduled backup is attached. Import it in Settings → Data → Import.\n\n— {actor}'s Habit Tracker"
+                    ),
+                    html: None,
+                    attachments: vec![EmailAttachment {
+                        filename: format!("habit-tracker-{date}.json"),
+                        content_type: "application/json".into(),
+                        data: base64::engine::general_purpose::STANDARD.encode(&backup),
+                    }],
+                };
+                email::queue(
+                    state,
+                    user_id,
+                    job,
+                    &format!("backup:{}:{when}:{to}", action.id),
+                )
+                .await?;
+            }
+        }
+        _ => {}
+    }
     Ok(())
 }

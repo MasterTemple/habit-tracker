@@ -55,6 +55,8 @@ SIGNUP_CODE=pick-one cargo run -p habit-api   # http://127.0.0.1:8080, database 
 | `SIGNUP_CODE` | unset (open sign-up) | Required to create an account when set; set it on a public server |
 | `SESSION_DAYS` | `90` | Sessions expire after this long unused |
 | `VAPID_SUBJECT` | `mailto:admin@localhost` | Contact address sent to push services (use a real one) |
+| `SMTP_URL` | unset (email off) | e.g. `smtps://user:pass@smtp.example.com:465` |
+| `EMAIL_FROM` | `Habit Tracker <habits@localhost>` | Sender for reports, backups, and email alerts |
 
 Endpoints: `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET`/`PATCH /me`,
 `POST /me/password`, `POST /sync`, `GET /push/key`, `POST`/`DELETE /push/subscribe`, `POST /push/test`,
@@ -73,6 +75,11 @@ who can list alerts about them.
 the shared tasks (`GET /shared`, `GET /shared/{username}`) and, optionally, anyone with its link (`GET /s/{token}`,
 no account). Shared data is the owner's rows for those tasks only, without entry notes or break reasons. The app
 shows it with the normal task views, read-only, on the owner's clock and time zone, under a banner with a back arrow.
+
+**Email.** SMTP (any provider) via `SMTP_URL`; off without it. The account's address (`PATCH /me`, test with
+`POST /me/email/test`) receives email reminders, scheduled backups (the app's export file, attached), and, unless other
+recipients are chosen, scheduled reports (each task's periods met, total, and streak over the past day, 7, or 30 days).
+Accountability alerts with the email channel also go to contacts' email addresses.
 
 **Notifications.** Web Push with RFC 8291 encryption and VAPID (pure Rust crypto; checked against the RFC's
 example). Only real push services are accepted as endpoints. Every notice goes to the user's inbox and a delivery

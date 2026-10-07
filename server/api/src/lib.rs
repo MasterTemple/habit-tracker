@@ -5,11 +5,13 @@ pub mod alerts;
 pub mod auth;
 pub mod clock;
 pub mod config;
+pub mod email;
 pub mod error;
 pub mod friends;
 pub mod notifications;
 pub mod outbox;
 pub mod push;
+pub mod reports;
 pub mod routes;
 pub mod scheduler;
 pub mod shares;
@@ -42,6 +44,8 @@ pub struct AppState {
     pub hook_limiter: Arc<webhooks::HookLimiter>,
     /// For push services and webhooks: short timeouts, no redirects.
     pub http: reqwest::Client,
+    /// None when email isn't configured.
+    pub mailer: Option<Arc<dyn email::Mailer>>,
 }
 
 impl AppState {
@@ -57,6 +61,16 @@ impl AppState {
             .user_agent(concat!("habit-tracker/", env!("CARGO_PKG_VERSION")))
             .build()
             .expect("http client");
+        let mailer: Option<Arc<dyn email::Mailer>> = match &config.smtp_url {
+            Some(url) => match email::SmtpMailer::new(url, &config.email_from) {
+                Ok(m) => Some(Arc::new(m)),
+                Err(e) => {
+                    tracing::error!(error = %e, "email disabled: bad SMTP settings");
+                    None
+                }
+            },
+            None => None,
+        };
         Ok(Self {
             db,
             clock,
@@ -65,6 +79,7 @@ impl AppState {
             vapid: Arc::new(vapid),
             hook_limiter: Arc::default(),
             http,
+            mailer,
         })
     }
 }

@@ -17,6 +17,10 @@ pub struct Config {
     pub vapid_subject: String,
     /// Tests only: allow push endpoints and webhooks on local/private addresses.
     pub allow_private_targets: bool,
+    /// `SMTP_URL`, e.g. `smtps://user:pass@smtp.example.com:465`. Email is off without it.
+    pub smtp_url: Option<String>,
+    /// `EMAIL_FROM`, e.g. `Habit Tracker <habits@example.com>`.
+    pub email_from: String,
 }
 
 impl Config {
@@ -37,6 +41,9 @@ impl Config {
                 .unwrap_or(90),
             vapid_subject: var("VAPID_SUBJECT").unwrap_or_else(|| "mailto:admin@localhost".into()),
             allow_private_targets: false,
+            smtp_url: var("SMTP_URL"),
+            email_from: var("EMAIL_FROM")
+                .unwrap_or_else(|| "Habit Tracker <habits@localhost>".into()),
         }
     }
 
@@ -50,6 +57,8 @@ impl Config {
             session_days: 90,
             vapid_subject: "mailto:test@example.com".into(),
             allow_private_targets: true,
+            smtp_url: None,
+            email_from: "Habit Tracker <habits@example.com>".into(),
         }
     }
 }

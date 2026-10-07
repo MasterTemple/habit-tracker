@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppState;
 use crate::clock::timestamp;
+use crate::email::EmailJob;
 use crate::error::ApiResult;
 use crate::push::{self, PushPayload, SendResult, SubscriptionKeys};
 use crate::webhooks::{self, WebhookJob};
@@ -82,6 +83,14 @@ pub async fn process_due(state: &AppState) -> usize {
             "push" => match serde_json::from_str::<StoredPushJob>(&payload) {
                 Ok(job) => push::send(state, &target, &job.keys, &job.payload).await,
                 Err(e) => SendResult::Retry(format!("bad payload: {e}")),
+            },
+            "email" => match (&state.mailer, serde_json::from_str::<EmailJob>(&payload)) {
+                (None, _) => SendResult::Rejected("email isn't set up on this server".into()),
+                (_, Err(e)) => SendResult::Rejected(format!("bad payload: {e}")),
+                (Some(mailer), Ok(job)) => match mailer.send(&job).await {
+                    Ok(()) => SendResult::Sent,
+                    Err(e) => SendResult::Retry(e),
+                },
             },
             "webhook" => match serde_json::from_str::<WebhookJob>(&payload) {
                 Ok(job) => webhooks::send(state, &id, &job).await,

@@ -54,6 +54,30 @@ pub struct Reminder {
     pub deleted_at: Option<String>,
 }
 
+/// A scheduled report or backup (an automation with kind "report" or "export").
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledAction {
+    pub id: String,
+    pub kind: String,
+    pub enabled: bool,
+    #[serde(default)]
+    pub scope: Scope,
+    pub schedule: Schedule,
+    #[serde(default = "default_period")]
+    pub period: habit_core::types::Period,
+    #[serde(default)]
+    pub contact_ids: Vec<String>,
+    #[serde(default)]
+    pub emails: Vec<String>,
+    #[serde(default)]
+    pub deleted_at: Option<String>,
+}
+
+fn default_period() -> habit_core::types::Period {
+    habit_core::types::Period::Week
+}
+
 pub struct UserData {
     pub tasks: Vec<Task>,
     pub targets: Vec<TaskTarget>,
@@ -147,6 +171,20 @@ impl UserData {
             today: to_local_date(at, self.settings.day_start_hour),
             time: at.format("%H:%M").to_string(),
         }
+    }
+
+    pub fn scheduled_actions(&self) -> Vec<ScheduledAction> {
+        self.automations
+            .iter()
+            .filter(|a| {
+                matches!(
+                    a.get("kind").and_then(|k| k.as_str()),
+                    Some("report" | "export")
+                )
+            })
+            .filter_map(|a| serde_json::from_value::<ScheduledAction>(a.clone()).ok())
+            .filter(|a| a.deleted_at.is_none())
+            .collect()
     }
 
     pub fn reminders(&self) -> Vec<Reminder> {

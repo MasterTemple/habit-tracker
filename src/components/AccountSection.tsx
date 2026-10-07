@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useSync } from "@/hooks/useSync"
+import { AccountEmail } from "./AccountEmail"
 import { defaultServerUrl } from "@/sync/api"
 import { createAccount, signIn, signOut, syncNow } from "@/sync/engine"
 
@@ -43,6 +44,7 @@ export function AccountSection() {
           Last synced {formatDistanceToNow(new Date(account.lastSyncAt), { addSuffix: true })}
         </p>
       )}
+      <AccountEmail />
       <div className="flex gap-2">
         <Button
           variant="outline"

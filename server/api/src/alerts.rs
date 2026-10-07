@@ -74,6 +74,8 @@ struct Contact {
     #[serde(default)]
     username: String,
     #[serde(default)]
+    email: String,
+    #[serde(default)]
     deleted_at: Option<String>,
 }
 
@@ -419,6 +421,36 @@ pub async fn check_user(state: &AppState, user_id: &str) -> ApiResult<()> {
                     &channels,
                 )
                 .await?;
+            }
+            if rule.channels.iter().any(|c| c == "email") {
+                let sentence = trigger.sentence(&actor);
+                let text = format!(
+                    "{sentence}\n\n—\nYou're getting this because {actor} added you to an accountability alert in Habit Tracker. Ask them to remove you to stop."
+                );
+                let contacts: Vec<Contact> = data
+                    .contacts
+                    .iter()
+                    .filter_map(|c| serde_json::from_value(c.clone()).ok())
+                    .collect();
+                for contact in contacts
+                    .iter()
+                    .filter(|c| c.deleted_at.is_none() && rule.contact_ids.contains(&c.id))
+                {
+                    let job = crate::email::EmailJob {
+                        to: contact.email.trim().to_string(),
+                        subject: sentence.clone(),
+                        html: Some(crate::email::html_from_text(&text)),
+                        text: text.clone(),
+                        attachments: vec![],
+                    };
+                    crate::email::queue(
+                        state,
+                        user_id,
+                        job,
+                        &format!("alert-email:{}:{key}:{}", rule.id, contact.id),
+                    )
+                    .await?;
+                }
             }
             if !rule.webhook_url.trim().is_empty() {
                 let job = WebhookJob {
