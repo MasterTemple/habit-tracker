@@ -11,11 +11,11 @@ import {
   duplicateTask,
   exportData,
   importData,
-  moveCategory,
+  reorderCategory,
+  reorderTask,
   recordEvent,
-  recordOrUndo,
   retireTask,
-  UNDO_WINDOW_MS,
+  undoLast,
   taskToInput,
   updateTask,
   type TaskInput,
@@ -81,12 +81,10 @@ describe("repo", () => {
     expect(await db.tasks.count()).toBe(2)
   })
 
-  it("reorders categories", async () => {
+  it("reorders categories by drag target", async () => {
     const a = await createCategory("A", "#000")
     const b = await createCategory("B", "#000")
-    await moveCategory(b, -1)
-    expect((await db.categories.orderBy("sortOrder").toArray()).map((c) => c.id)).toEqual([b, a])
-    await moveCategory(b, -1) // already first: no-op
+    await reorderCategory(b, a)
     expect((await db.categories.orderBy("sortOrder").toArray()).map((c) => c.id)).toEqual([b, a])
   })
 
@@ -99,19 +97,31 @@ describe("repo", () => {
     expect((await db.tasks.get(copy))?.createdFromId).toBe(id)
   })
 
-  it("deletes the entry instead of correcting when undone within a minute", async () => {
+  it("undoes the newest entry in the period, whichever button made it", async () => {
     const id = await createTask(input)
-    expect(await recordOrUndo(id, 10)).toBe("recorded")
-    expect(await recordOrUndo(id, -10)).toBe("undone")
-    expect(await db.events.filter((e) => !e.deletedAt).count()).toBe(0)
+    const range = { start: "2000-01-01", end: "2999-12-31" }
+    await recordEvent(id, 5)
+    await new Promise((r) => setTimeout(r, 5))
+    await recordEvent(id, 10)
+    expect((await undoLast(id, range))?.amount).toBe(10)
+    expect((await undoLast(id, range))?.amount).toBe(5)
+    expect(await undoLast(id, range)).toBeNull()
+  })
 
-    // Not an exact reversal → recorded as a correction.
-    await recordOrUndo(id, 10)
-    expect(await recordOrUndo(id, -1)).toBe("recorded")
+  it("does not undo entries outside the period", async () => {
+    const id = await createTask(input)
+    await recordEvent(id, 5)
+    expect(await undoLast(id, { start: "2000-01-01", end: "2000-01-31" })).toBeNull()
+  })
 
-    // Too late → recorded as a correction.
-    const later = Date.now() + UNDO_WINDOW_MS + 1000
-    expect(await recordOrUndo(id, 1, later)).toBe("recorded")
+  it("reorders tasks by drag target", async () => {
+    const a = await createTask({ ...input, name: "A" })
+    const b = await createTask({ ...input, name: "B" })
+    const c = await createTask({ ...input, name: "C" })
+    await reorderTask(c, a)
+    expect((await db.tasks.orderBy("sortOrder").toArray()).map((t) => t.id)).toEqual([c, a, b])
+    await reorderTask(c, b)
+    expect((await db.tasks.orderBy("sortOrder").toArray()).map((t) => t.id)).toEqual([a, b, c])
   })
 
   it("removes a deleted category from breaks", async () => {

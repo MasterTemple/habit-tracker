@@ -100,10 +100,13 @@ export interface Settings {
   /** Hour (0–23) when a new day begins; events before it count toward the previous day. */
   dayStartHour: number
   carryOverDefault: boolean
+  /** How limit tasks read: "3 / 4" + "1 left", or "1 / 4 remaining" + "3 used". */
+  limitDisplay: "used" | "remaining"
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   weekStartsOn: 0,
   dayStartHour: 0,
   carryOverDefault: false,
+  limitDisplay: "used",
 }

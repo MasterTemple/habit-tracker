@@ -3,12 +3,15 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
+import { endOfDuration, type DurationUnit } from "@/domain/dates"
 import { createException, deleteException, updateException, type ExceptionInput } from "@/db/repo"
 import { useAppData } from "@/hooks/useAppData"
 import { cn } from "@/lib/utils"
 import { CategoryChip } from "./CategoryChip"
+import { NumberInput } from "./NumberInput"
 import { TaskIcon } from "./TaskIcon"
 
 export type BreakTarget = { id: string } | { preset?: Partial<ExceptionInput> }
@@ -25,10 +28,17 @@ interface Props {
 export function BreakEditor({ target, onClose }: Props) {
   const { today, categories, tasks, exceptions } = useAppData()
   const [input, setInput] = useState<ExceptionInput | null>(null)
+  const [length, setLengthState] = useState<{ count: number | null; unit: DurationUnit }>({ count: null, unit: "day" })
+
+  const setLength = (next: { count: number | null; unit: DurationUnit }) => {
+    setLengthState(next)
+    if (next.count && input) set({ endDate: endOfDuration(input.startDate, next.count, next.unit) })
+  }
   const editingId = target && "id" in target ? target.id : null
 
   useEffect(() => {
     if (!target) return
+    setLengthState({ count: null, unit: "day" })
     if ("id" in target) {
       const existing = exceptions.find((e) => e.id === target.id)
       setInput(existing ?? null)
@@ -73,7 +83,12 @@ export function BreakEditor({ target, onClose }: Props) {
 
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className="mx-auto max-h-[92dvh] max-w-lg overflow-y-auto rounded-t-2xl">
+      <SheetContent
+        side="bottom"
+        className="mx-auto max-h-[92dvh] max-w-lg overflow-y-auto rounded-t-2xl"
+        // Focusing the first field would pop open iOS's date picker.
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <SheetHeader>
           <SheetTitle>{editingId ? "Edit break" : "New break"}</SheetTitle>
           <SheetDescription>
@@ -83,26 +98,61 @@ export function BreakEditor({ target, onClose }: Props) {
 
         {input && (
           <div className="flex flex-col gap-5 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="break-start">From</Label>
-                <Input
-                  id="break-start"
-                  type="date"
-                  value={input.startDate}
-                  onChange={(e) => e.target.value && set({ startDate: e.target.value })}
+            <div className="grid gap-1.5">
+              <Label htmlFor="break-start">From</Label>
+              <Input
+                id="break-start"
+                type="date"
+                className="block w-full min-w-0 appearance-none"
+                value={input.startDate}
+                onChange={(e) => {
+                  const startDate = e.target.value
+                  if (!startDate) return
+                  set({ startDate, ...(length.count ? { endDate: endOfDuration(startDate, length.count, length.unit) } : {}) })
+                }}
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="break-length">For</Label>
+              <div className="flex gap-2">
+                <NumberInput
+                  id="break-length"
+                  className="w-20"
+                  placeholder="–"
+                  allowEmpty
+                  value={length.count}
+                  onChange={(count) => setLength({ ...length, count: count && count > 0 ? count : null })}
                 />
+                <Select value={length.unit} onValueChange={(unit) => setLength({ ...length, unit: unit as DurationUnit })}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="day">{length.count === 1 ? "Day" : "Days"}</SelectItem>
+                    <SelectItem value="week">{length.count === 1 ? "Week" : "Weeks"}</SelectItem>
+                    <SelectItem value="month">{length.count === 1 ? "Month" : "Months"}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="break-end">To</Label>
-                <Input
-                  id="break-end"
-                  type="date"
-                  value={input.endDate}
-                  min={input.startDate}
-                  onChange={(e) => e.target.value && set({ endDate: e.target.value })}
-                />
-              </div>
+              <p className="text-xs text-muted-foreground">Optional: sets the end date for you.</p>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="break-end">To</Label>
+              <Input
+                id="break-end"
+                type="date"
+                className="block w-full min-w-0 appearance-none"
+                value={input.endDate}
+                min={input.startDate}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  set({ endDate: e.target.value })
+                  // A hand-picked end date replaces the length.
+                  setLength({ ...length, count: null })
+                }}
+              />
             </div>
 
             <div className="grid gap-1.5">

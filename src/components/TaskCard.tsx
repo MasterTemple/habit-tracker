@@ -1,18 +1,15 @@
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
-  ArrowDownIcon,
-  ArrowUpIcon,
   CopyIcon,
   CopyPlusIcon,
   EllipsisVerticalIcon,
   FlameIcon,
   HistoryIcon,
-  MinusIcon,
   PencilIcon,
-  PlusIcon,
   SlidersHorizontalIcon,
   TreePalmIcon,
+  Undo2Icon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -25,50 +22,76 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
-import { moveTask, recordOrUndo, retireTask, unretireTask } from "@/db/repo"
+import { recordEvent, restoreEvent, retireTask, undoLast, unretireTask } from "@/db/repo"
+import { inRange } from "@/domain/dates"
 import { isCheckbox, isExcused } from "@/domain/status"
-import type { TaskView } from "@/hooks/useAppData"
+import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
 import { displayValue, progressPercent, statusText } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { TaskIcon } from "./TaskIcon"
 import { CategoryChip } from "./CategoryChip"
+import type { DragProps } from "./Sortable"
 
 interface Props {
   view: TaskView
   onOpen: () => void
   onCustomAmount: () => void
   today: string
+  /** From useDragHandle: the icon becomes the drag handle. */
+  drag?: DragProps
 }
 
-export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
+export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
   const { openTask } = useEditors()
+  const { settings } = useAppData()
   const { task, target, categories, summary, ctx } = view
   const { current } = summary
   const retired = !!task.retiredAt
   const checkbox = isCheckbox(task, target)
-  const step = task.incrementAmounts[0] ?? 1
   const failed = current.state === "failure"
   const negative = current.actual < 0
   const onBreak = isExcused(today, ctx.exceptions)
 
-  const record = (amount: number) => recordOrUndo(task.id, amount)
-  // Every card has one "take back" button and up to three "do it" buttons. A limit
-  // counts down your allowance, so its buttons read −N (use some) and + (give back).
+  // A limit counts down your allowance, so its buttons read −N (use some).
   const isLimit = task.type === "limit"
+  const signed = (amount: number) => {
+    const shown = isLimit ? -amount : amount
+    return shown > 0 ? `+${shown}` : `−${-shown}`
+  }
+  const canUndo = ctx.events.some((e) => inRange(e.localDate, current.range))
+
+  const undo = async () => {
+    const undone = await undoLast(task.id, current.range)
+    if (!undone) return false
+    toast(`Undid ${signed(undone.amount)} on “${task.name}”`, {
+      action: { label: "Redo", onClick: () => restoreEvent(undone.id) },
+    })
+    return true
+  }
 
   return (
     <div
+      ref={drag?.setRootNode}
+      style={drag?.rootStyle}
       className={cn(
         "relative overflow-hidden rounded-xl border bg-card pl-4 pr-2 pt-2.5 pb-3 shadow-xs",
         retired && "opacity-60",
+        drag?.dragging && "z-10 shadow-lg",
       )}
     >
       <div className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: task.color }} />
 
       <div className="flex items-center gap-3">
+        <div
+          ref={drag?.setHandleNode}
+          {...drag?.handleProps}
+          className={cn("-my-2 -ml-1 shrink-0 py-2 pl-1", drag && "cursor-grab touch-none active:cursor-grabbing")}
+          aria-label={drag ? `Drag to reorder ${task.name}` : undefined}
+        >
+          <TaskIcon name={task.icon} className="size-6" style={{ color: task.color }} />
+        </div>
         <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          <TaskIcon name={task.icon} className="size-6 shrink-0" style={{ color: task.color }} />
           <div className="min-w-0 flex-1">
             {categories.length > 0 && (
               <div className="mb-0.5 flex flex-wrap gap-1">
@@ -103,7 +126,10 @@ export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
               <Checkbox
                 className="size-7 rounded-md"
                 checked={current.actual > 0}
-                onCheckedChange={(checked) => record(checked ? 1 : -1)}
+                onCheckedChange={async (checked) => {
+                  if (checked) await recordEvent(task.id, 1)
+                  else if (!(await undo())) await recordEvent(task.id, -1)
+                }}
                 aria-label={`Mark ${task.name}`}
               />
             ) : (
@@ -111,11 +137,11 @@ export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
                 <Button
                   variant="outline"
                   size="icon-lg"
-                  disabled={current.actual <= 0}
-                  onClick={() => record(-Math.min(step, current.actual))}
-                  aria-label={isLimit ? `Give back ${step}` : `Subtract ${step}`}
+                  disabled={!canUndo}
+                  onClick={undo}
+                  aria-label="Undo last entry"
                 >
-                  {isLimit ? <PlusIcon /> : <MinusIcon />}
+                  <Undo2Icon />
                 </Button>
                 {task.incrementAmounts.slice(0, 3).map((amount) => (
                   <Button
@@ -123,10 +149,10 @@ export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
                     variant="secondary"
                     size="lg"
                     className="min-w-9 px-2"
-                    onClick={() => record(amount)}
+                    onClick={() => recordEvent(task.id, amount)}
                     aria-label={isLimit ? `Use ${amount}` : `Add ${amount}`}
                   >
-                    {isLimit ? `−${amount}` : `+${amount}`}
+                    {signed(amount)}
                   </Button>
                 ))}
               </>
@@ -150,16 +176,6 @@ export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
               <DropdownMenuItem onSelect={() => openTask({ mode: "edit", taskId: task.id })}>
                 <PencilIcon /> Edit
               </DropdownMenuItem>
-              {!retired && (
-                <>
-                  <DropdownMenuItem onSelect={() => moveTask(task.id, -1)}>
-                    <ArrowUpIcon /> Move up
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => moveTask(task.id, 1)}>
-                    <ArrowDownIcon /> Move down
-                  </DropdownMenuItem>
-                </>
-              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => openTask({ mode: "duplicate", taskId: task.id })}>
                 <CopyPlusIcon /> Duplicate…
@@ -190,7 +206,7 @@ export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
 
       <div className="mt-2 pr-2">
         <Progress
-          value={progressPercent(current)}
+          value={progressPercent(task, current, settings.limitDisplay)}
           className={cn(
             "h-1.5 *:data-[slot=progress-indicator]:bg-(--bar)",
             current.state === "excused" && "opacity-40",
@@ -198,8 +214,8 @@ export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
           style={{ "--bar": failed ? "var(--destructive)" : task.color } as React.CSSProperties}
         />
         <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-          <span className={cn(negative && "font-medium text-destructive")}>{displayValue(task, summary)}</span>
-          <span className={cn((failed || negative) && "font-medium text-destructive")}>{statusText(task, current)}</span>
+          <span className={cn(negative && "font-medium text-destructive")}>{displayValue(task, summary, settings.limitDisplay)}</span>
+          <span className={cn((failed || negative) && "font-medium text-destructive")}>{statusText(task, current, settings.limitDisplay)}</span>
         </div>
       </div>
     </div>

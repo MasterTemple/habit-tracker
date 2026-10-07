@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { periodRange, toLocalDate } from "./dates"
+import { endOfDuration, periodRange, toLocalDate } from "./dates"
 import { exceptionsForTask, overview, periodHistory, periodStatus, streak, summarize, targetFor, type TaskContext } from "./status"
 import {
   DEFAULT_SETTINGS,
@@ -84,6 +84,14 @@ describe("dates", () => {
     const lateNight = new Date(2026, 9, 7, 1, 30)
     expect(toLocalDate(lateNight, 0)).toBe("2026-10-07")
     expect(toLocalDate(lateNight, 3)).toBe("2026-10-06")
+  })
+
+  it("computes inclusive end dates for durations", () => {
+    expect(endOfDuration("2026-10-06", 3, "day")).toBe("2026-10-08")
+    expect(endOfDuration("2026-10-06", 1, "day")).toBe("2026-10-06")
+    expect(endOfDuration("2026-10-06", 1, "week")).toBe("2026-10-12")
+    expect(endOfDuration("2026-10-06", 1, "month")).toBe("2026-11-05")
+    expect(endOfDuration("2026-01-31", 1, "month")).toBe("2026-02-27")
   })
 
   it("computes week ranges respecting weekStartsOn", () => {

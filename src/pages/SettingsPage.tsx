@@ -54,7 +54,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Settings" create={false} />
+      <PageHeader title="Settings" />
 
       <Section title="General">
         <Row label="Week starts on">
@@ -88,6 +88,20 @@ export function SettingsPage() {
                   {hourLabel(hour)}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </Row>
+        <Row label="Show limits as" hint="e.g. a limit of 4 with 3 used">
+          <Select
+            value={settings.limitDisplay}
+            onValueChange={(v) => updateSettings({ limitDisplay: v as typeof settings.limitDisplay })}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="used">Used (3 / 4)</SelectItem>
+              <SelectItem value="remaining">Remaining (1 / 4)</SelectItem>
             </SelectContent>
           </Select>
         </Row>

@@ -1,14 +1,26 @@
-import type { ReactNode } from "react"
-import { CreateButton } from "./CreateButton"
+import { PlusIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
-export function PageHeader({ title, subtitle, create = true }: { title: string; subtitle?: ReactNode; create?: boolean }) {
+interface Props {
+  title: string
+  /** Shows a round + button. */
+  onCreate?: () => void
+  createLabel?: string
+}
+
+export function PageHeader({ title, onCreate, createLabel }: Props) {
   return (
     <header className="flex items-end justify-between">
-      <div>
-        {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-        <h1 className="text-2xl font-semibold">{title}</h1>
-      </div>
-      {create && <CreateButton />}
+      <h1 className="text-2xl font-semibold">{title}</h1>
+      {onCreate && <CreateButton onClick={onCreate} label={createLabel ?? "Create"} />}
     </header>
+  )
+}
+
+export function CreateButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <Button size="icon-lg" className="size-10 shrink-0 rounded-full" onClick={onClick} aria-label={label}>
+      <PlusIcon className="size-5" />
+    </Button>
   )
 }

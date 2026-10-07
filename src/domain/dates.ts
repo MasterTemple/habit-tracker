@@ -1,5 +1,6 @@
 import {
   addDays as addDaysToDate,
+  addMonths,
   differenceInCalendarDays,
   endOfMonth,
   endOfWeek,
@@ -60,6 +61,21 @@ export function periodRange(period: Period, date: LocalDate, weekStartsOn: WeekS
 
 export function previousPeriodRange(period: Period, range: DateRange, weekStartsOn: WeekStart): DateRange {
   return periodRange(period, addDays(range.start, -1), weekStartsOn)
+}
+
+export type DurationUnit = "day" | "week" | "month"
+
+/** Inclusive end date of a span starting on `start`: 3 days from Oct 6 ends Oct 8; 1 month ends Nov 5. */
+export function endOfDuration(start: LocalDate, count: number, unit: DurationUnit): LocalDate {
+  const n = Math.max(1, Math.floor(count))
+  switch (unit) {
+    case "day":
+      return addDays(start, n - 1)
+    case "week":
+      return addDays(start, 7 * n - 1)
+    case "month":
+      return formatLocalDate(addDaysToDate(addMonths(parseLocalDate(start), n), -1))
+  }
 }
 
 export function inRange(date: LocalDate, range: DateRange): boolean {

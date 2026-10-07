@@ -1,76 +1,79 @@
-import { format } from "date-fns"
 import { ChevronDownIcon, PlusIcon, SparklesIcon } from "lucide-react"
 import { useState } from "react"
 import { AmountDialog } from "@/components/AmountDialog"
 import { CategoriesList } from "@/components/CategoriesList"
 import { CategoryChip } from "@/components/CategoryChip"
 import { DailyOverview } from "@/components/DailyOverview"
-import { PageHeader } from "@/components/PageHeader"
+import { SortableList, useDragHandle } from "@/components/Sortable"
 import { TaskCard } from "@/components/TaskCard"
 import { TaskDetail } from "@/components/TaskDetail"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { reorderTask } from "@/db/repo"
 import { seedExamples } from "@/db/seed"
-import { parseLocalDate } from "@/domain/dates"
-import { useAppData } from "@/hooks/useAppData"
+import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
 import { cn } from "@/lib/utils"
 
 export function TasksPage() {
-  const { today } = useAppData()
+  const { tasks } = useAppData()
   const [tab, setTab] = useState("tasks")
   const [filter, setFilter] = useState<string | null>(null)
 
+  const visible = tasks.filter((t) => !filter || t.categories.some((c) => c.id === filter))
+  const active = visible.filter((t) => !t.task.retiredAt)
+  const retired = visible.filter((t) => t.task.retiredAt)
+
   return (
-    <div className="flex flex-col gap-3">
-      <PageHeader title="Tasks" subtitle={format(parseLocalDate(today), "EEEE, MMMM d")} />
-      <Tabs value={tab} onValueChange={setTab}>
+    <Tabs value={tab} onValueChange={setTab}>
+      {/* Pinned while the list scrolls. The negative margin cancels the page's top inset so that,
+          once stuck, the header's own padding keeps it clear of the status bar. */}
+      <div className="sticky top-0 z-30 -mx-4 -mt-[calc(0.5rem+env(safe-area-inset-top))] flex flex-col gap-3 bg-background px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-3">
         <TabsList className="w-full">
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
         </TabsList>
-        <TabsContent value="tasks" className="mt-2">
-          <TaskList filter={filter} setFilter={setFilter} />
-        </TabsContent>
-        <TabsContent value="categories" className="mt-2">
-          <CategoriesList
-            onShowTasks={(id) => {
-              setFilter(id)
-              setTab("tasks")
-            }}
-          />
-        </TabsContent>
-      </Tabs>
-    </div>
+        {tab === "tasks" && <DailyOverview tasks={active} />}
+      </div>
+      <TabsContent value="tasks">
+        <TaskList active={active} retired={retired} filter={filter} setFilter={setFilter} />
+      </TabsContent>
+      <TabsContent value="categories">
+        <CategoriesList
+          onShowTasks={(id) => {
+            setFilter(id)
+            setTab("tasks")
+          }}
+        />
+      </TabsContent>
+    </Tabs>
   )
 }
 
-function TaskList({ filter, setFilter }: { filter: string | null; setFilter: (id: string | null) => void }) {
+interface TaskListProps {
+  active: TaskView[]
+  retired: TaskView[]
+  filter: string | null
+  setFilter: (id: string | null) => void
+}
+
+function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
   const { tasks, categories, today } = useAppData()
   const { openTask, openBreak } = useEditors()
   const [showRetired, setShowRetired] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [amountId, setAmountId] = useState<string | null>(null)
-
-  const visible = tasks.filter((t) => !filter || t.categories.some((c) => c.id === filter))
-  const active = visible.filter((t) => !t.task.retiredAt)
-  const retired = visible.filter((t) => t.task.retiredAt)
   const find = (id: string | null) => tasks.find((t) => t.task.id === id) ?? null
 
-  const card = (view: (typeof tasks)[number]) => (
-    <TaskCard
-      key={view.task.id}
-      view={view}
-      onOpen={() => setDetailId(view.task.id)}
-      onCustomAmount={() => setAmountId(view.task.id)}
-      today={today}
-    />
-  )
+  const cardProps = (view: TaskView) => ({
+    view,
+    today,
+    onOpen: () => setDetailId(view.task.id),
+    onCustomAmount: () => setAmountId(view.task.id),
+  })
 
   return (
     <div className="flex flex-col gap-3">
-      <DailyOverview tasks={active} />
-
       {categories.length > 0 && (
         <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
           <button
@@ -109,7 +112,11 @@ function TaskList({ filter, setFilter }: { filter: string | null; setFilter: (id
         </div>
       )}
 
-      {active.map(card)}
+      <SortableList ids={active.map((t) => t.task.id)} onMove={reorderTask}>
+        {active.map((view) => (
+          <SortableTaskCard key={view.task.id} {...cardProps(view)} />
+        ))}
+      </SortableList>
 
       {retired.length > 0 && (
         <>
@@ -121,7 +128,7 @@ function TaskList({ filter, setFilter }: { filter: string | null; setFilter: (id
             <ChevronDownIcon className={cn("size-4 transition-transform", showRetired && "rotate-180")} />
             Retired ({retired.length})
           </button>
-          {showRetired && retired.map(card)}
+          {showRetired && retired.map((view) => <TaskCard key={view.task.id} {...cardProps(view)} />)}
         </>
       )}
 
@@ -145,4 +152,8 @@ function TaskList({ filter, setFilter }: { filter: string | null; setFilter: (id
       <AmountDialog view={find(amountId)} onClose={() => setAmountId(null)} />
     </div>
   )
+}
+
+function SortableTaskCard(props: Omit<React.ComponentProps<typeof TaskCard>, "drag">) {
+  return <TaskCard {...props} drag={useDragHandle(props.view.task.id)} />
 }

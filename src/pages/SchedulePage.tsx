@@ -1,4 +1,4 @@
-import { BellIcon, CalendarClockIcon, ChevronDownIcon, TreePalmIcon, WebhookIcon } from "lucide-react"
+import { BellIcon, CalendarClockIcon, ChevronDownIcon, PlusIcon, TreePalmIcon, WebhookIcon } from "lucide-react"
 import { useState } from "react"
 import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button"
@@ -10,9 +10,10 @@ import { breakDates, breakScopeNames } from "@/lib/breaks"
 import { cn } from "@/lib/utils"
 
 export function SchedulePage() {
+  const { openBreak } = useEditors()
   return (
     <div className="flex flex-col gap-3">
-      <PageHeader title="Schedule" />
+      <PageHeader title="Schedule" onCreate={() => openBreak({})} createLabel="New break" />
       <Tabs defaultValue="breaks">
         <TabsList className="w-full">
           <TabsTrigger value="breaks">Breaks</TabsTrigger>
@@ -69,6 +70,9 @@ function BreaksList() {
           {showPast && <BreakGroup items={past} />}
         </div>
       )}
+      <Button variant="outline" onClick={() => openBreak({})}>
+        <PlusIcon /> New break
+      </Button>
     </div>
   )
 }

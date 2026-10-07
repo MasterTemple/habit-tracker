@@ -1,6 +1,6 @@
 // All writes go through here so components never touch tables directly.
 import { v7 as uuid } from "uuid"
-import { periodRange, toLocalDate } from "@/domain/dates"
+import { periodRange, toLocalDate, type DateRange } from "@/domain/dates"
 import { currentTarget } from "@/domain/status"
 import {
   DEFAULT_SETTINGS,
@@ -8,6 +8,7 @@ import {
   type DisplayMode,
   type Period,
   type Settings,
+  type TaskEvent,
   type TaskException,
   type TaskTarget,
   type TaskType,
@@ -188,15 +189,22 @@ export async function duplicateTask(id: string, input: TaskInput): Promise<strin
   return createTask(input, id)
 }
 
-export async function moveTask(id: string, direction: -1 | 1) {
-  const tasks = (await db.tasks.orderBy("sortOrder").toArray()).filter((t) => !t.retiredAt)
-  const index = tasks.findIndex((t) => t.id === id)
-  const other = tasks[index + direction]
-  if (index < 0 || !other) return
+/** Moves a task to where `overId` is, renumbering every task's sortOrder. */
+export async function reorderTask(activeId: string, overId: string) {
   await db.transaction("rw", db.tasks, async () => {
-    await db.tasks.update(id, { sortOrder: other.sortOrder, updatedAt: now() })
-    await db.tasks.update(other.id, { sortOrder: tasks[index].sortOrder, updatedAt: now() })
+    const tasks = await db.tasks.orderBy("sortOrder").toArray()
+    const ids = moveId(tasks.map((t) => t.id), activeId, overId)
+    await Promise.all(ids.map((id, sortOrder) => db.tasks.update(id, { sortOrder, updatedAt: now() })))
   })
+}
+
+function moveId(ids: string[], activeId: string, overId: string): string[] {
+  const from = ids.indexOf(activeId)
+  const to = ids.indexOf(overId)
+  if (from < 0 || to < 0) return ids
+  const next = [...ids]
+  next.splice(to, 0, ...next.splice(from, 1))
+  return next
 }
 
 // ---------- events ----------
@@ -219,28 +227,20 @@ export async function recordEvent(taskId: string, amount: number, note = ""): Pr
   return id
 }
 
-/** How long after an entry an opposite button press removes it instead of adding a correction. */
-export const UNDO_WINDOW_MS = 60_000
-
 /**
- * Used by the card buttons. If the newest entry for the task was made within the
- * undo window and this press exactly reverses it, the entry is deleted instead of
- * recording a correction, so a quick "oops" leaves no trace in the history.
+ * The card's undo button: deletes the newest entry recorded within `range`
+ * (the current period), whichever button made it. Returns it for "Redo", or null.
  */
-export async function recordOrUndo(taskId: string, amount: number, now = Date.now()): Promise<"recorded" | "undone"> {
-  const cutoff = new Date(now - UNDO_WINDOW_MS).toISOString()
-  const recent = await db.events
-    .where("taskId")
-    .equals(taskId)
-    .filter((e) => !e.deletedAt && e.createdAt >= cutoff)
+export async function undoLast(taskId: string, range: DateRange): Promise<TaskEvent | null> {
+  const events = await db.events
+    .where("[taskId+localDate]")
+    .between([taskId, range.start], [taskId, range.end], true, true)
+    .filter((e) => !e.deletedAt)
     .toArray()
-  const latest = recent.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-  if (latest && latest.amount === -amount) {
-    await deleteEvent(latest.id)
-    return "undone"
-  }
-  await recordEvent(taskId, amount)
-  return "recorded"
+  const latest = events.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+  if (!latest) return null
+  await deleteEvent(latest.id)
+  return latest
 }
 
 export async function deleteEvent(id: string) {
@@ -271,14 +271,11 @@ export async function updateCategory(id: string, changes: Partial<Pick<Category,
   await db.categories.update(id, { ...changes, updatedAt: now() })
 }
 
-export async function moveCategory(id: string, direction: -1 | 1) {
-  const categories = (await db.categories.orderBy("sortOrder").toArray()).filter((c) => !c.deletedAt)
-  const index = categories.findIndex((c) => c.id === id)
-  const other = categories[index + direction]
-  if (index < 0 || !other) return
+export async function reorderCategory(activeId: string, overId: string) {
   await db.transaction("rw", db.categories, async () => {
-    await db.categories.update(id, { sortOrder: other.sortOrder, updatedAt: now() })
-    await db.categories.update(other.id, { sortOrder: categories[index].sortOrder, updatedAt: now() })
+    const categories = await db.categories.orderBy("sortOrder").toArray()
+    const ids = moveId(categories.map((c) => c.id), activeId, overId)
+    await Promise.all(ids.map((id, sortOrder) => db.categories.update(id, { sortOrder, updatedAt: now() })))
   })
 }
 

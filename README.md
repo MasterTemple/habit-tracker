@@ -39,7 +39,7 @@ Progress is never stored; it's derived from append-only **events** (`+10 at 09:0
 - **events**: amounts (negative for corrections) with a fixed `localDate`; soft-deleted for undo.
 - **categories** / **taskCategories**: many-to-many; priorities are just categories.
 - **exceptions** ("breaks"): cover all tasks, or any mix of tasks and categories.
-- **settings**: week start, day start hour, carry-over default.
+- **settings**: week start, day start hour, carry-over default, limit wording (used / remaining).
 
 ### Rules
 
@@ -47,8 +47,8 @@ Progress is never stored; it's derived from append-only **events** (`+10 at 09:0
   Limit goals stay the same, but entries on break days don't count.
 - **Carry-over** (per task, one period back only): accumulate surplus lowers the next goal; limit overage lowers
   the next allowance. Unused limit allowance does not roll forward.
-- **Quick undo:** on the card buttons, pressing the opposite button within a minute of an entry deletes that
-  entry instead of recording a correction.
+- **Undo:** the card's undo button deletes the newest entry in the current period, whichever button made it
+  (with Redo in the toast). Corrections that should stay in the history go through *Custom amount*.
 - **Streaks:** consecutive successful periods; the current open period and excused periods don't break it.
 
 All rows use UUIDv7 ids, `updatedAt`, and soft deletes so sync can be added later.

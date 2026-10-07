@@ -47,7 +47,7 @@ function Detail({
   onTakeBreak,
   onEditBreak,
 }: { view: TaskView; today: string } & Omit<Props, "view" | "today" | "onClose">) {
-  const { categories, tasks } = useAppData()
+  const { categories, tasks, settings } = useAppData()
   const { task, summary, ctx } = view
   const history = useMemo(() => periodHistory(ctx, today, 90), [ctx, today])
   const [expanded, setExpanded] = useState<string | null>(history[0]?.range.start ?? null)
@@ -129,7 +129,7 @@ function Detail({
                 >
                   <span className="w-28 shrink-0">{formatRange(status.period, status.range)}</span>
                   <Progress
-                    value={progressPercent(status)}
+                    value={progressPercent(task, status, settings.limitDisplay)}
                     className="h-1.5 flex-1 *:data-[slot=progress-indicator]:bg-(--bar)"
                     style={
                       {
@@ -151,8 +151,8 @@ function Detail({
                     {status.carried > 0 && (
                       <p className="py-1 text-xs text-muted-foreground">Goal adjusted by {status.carried} carried over.</p>
                     )}
-                    {statusText(task, status) && (
-                      <p className="py-1 text-xs text-muted-foreground">{statusText(task, status)}</p>
+                    {statusText(task, status, settings.limitDisplay) && (
+                      <p className="py-1 text-xs text-muted-foreground">{statusText(task, status, settings.limitDisplay)}</p>
                     )}
                     {events.length === 0 && <p className="py-1 text-muted-foreground">No entries</p>}
                     {events.map((e) => (
