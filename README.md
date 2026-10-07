@@ -25,11 +25,22 @@ Pushing to `main` runs `.github/workflows/deploy.yml`, which typechecks, tests, 
 Data lives in the browser's IndexedDB for that exact origin, so moving between the dev server and the
 deployed site means using Export / Import in Settings.
 
-## Layout
+## Server (in progress)
+
+`server/` is a Rust workspace. `server/core` is the app's rules (`src/domain`) ported to Rust, so the server
+computes exactly what the app shows. Both are checked against the same cases in `fixtures/core.json`:
+
+```sh
+bun run test                  # includes src/domain/conformance.test.ts (checks TS against the fixture)
+bun run fixtures              # regenerate the fixture after an intentional rule change…
+cd server && cargo test       # …then make the Rust port match it
+```
+
+
 
 ```
-src/domain/     Pure TS: types, periods, progress/streak/carry-over rules. No React or DB imports,
-                so a future sync server can run the same logic.
+src/domain/     Pure TS: types, periods, progress/streak/carry-over rules. No React or DB imports.
+                Mirrored in Rust by server/core; fixtures/core.json keeps them in agreement.
 src/db/         Dexie schema (db.ts) and the only place that writes data (repo.ts).
 src/hooks/      useAppData: live-loads everything and derives per-task summaries.
                 useEditors: hosts the task/category/break editors so any page or the + menu can open them.

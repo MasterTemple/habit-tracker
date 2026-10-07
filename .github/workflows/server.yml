@@ -1,0 +1,27 @@
+name: Server
+
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", "fixtures/**", ".github/workflows/server.yml"]
+  pull_request:
+    paths: ["server/**", "fixtures/**", ".github/workflows/server.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      # Includes the conformance tests against fixtures/core.json, which the web app's tests also check.
+      - run: cargo test
