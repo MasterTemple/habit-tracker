@@ -158,6 +158,41 @@ fn validate_shape(table: &str, id: &str, row: &Value) -> ApiResult<()> {
     }
 }
 
+/// Stores a row version unless the stored one is at least as new. Returns whether it
+/// was written. Used by sync and by server-created rows (e.g. webhook entries).
+pub async fn write_row(
+    tx: &mut Transaction<'_, Sqlite>,
+    user: &str,
+    table: &str,
+    id: &str,
+    data: &str,
+    updated: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> ApiResult<bool> {
+    if existing_updated(tx, user, table, id)
+        .await?
+        .is_some_and(|stored| stored >= updated)
+    {
+        return Ok(false);
+    }
+    let seq = next_seq(tx, user).await?;
+    sqlx::query(
+        "INSERT INTO sync_rows (user_id, tbl, id, data, updated_at, deleted, seq, received_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+         ON CONFLICT (user_id, tbl, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at,
+           deleted = 0, seq = excluded.seq, received_at = excluded.received_at",
+    )
+    .bind(user)
+    .bind(table)
+    .bind(id)
+    .bind(data)
+    .bind(timestamp(updated))
+    .bind(seq)
+    .bind(timestamp(now))
+    .execute(&mut **tx)
+    .await?;
+    Ok(true)
+}
+
 async fn next_seq(tx: &mut Transaction<'_, Sqlite>, user_id: &str) -> ApiResult<i64> {
     Ok(sqlx::query_scalar(
         "UPDATE users SET sync_seq = sync_seq + 1 WHERE id = ? RETURNING sync_seq",
@@ -242,26 +277,7 @@ pub async fn sync(
 
     // Push: the newer version wins.
     for (table, id, updated, data) in rows {
-        if existing_updated(&mut tx, user, &table, &id)
-            .await?
-            .is_some_and(|stored| stored >= updated)
-        {
-            continue;
-        }
-        let seq = next_seq(&mut tx, user).await?;
-        sqlx::query(
-            "INSERT INTO sync_rows (user_id, tbl, id, data, updated_at, deleted, seq) VALUES (?, ?, ?, ?, ?, 0, ?)
-             ON CONFLICT (user_id, tbl, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at,
-               deleted = 0, seq = excluded.seq",
-        )
-        .bind(user)
-        .bind(&table)
-        .bind(&id)
-        .bind(&data)
-        .bind(timestamp(updated))
-        .bind(seq)
-        .execute(&mut *tx)
-        .await?;
+        write_row(&mut tx, user, &table, &id, &data, updated, now).await?;
     }
     // A tombstone wins over any version not newer than it.
     for (table, id, deleted_at) in deletes {
@@ -273,15 +289,16 @@ pub async fn sync(
         }
         let seq = next_seq(&mut tx, user).await?;
         sqlx::query(
-            "INSERT INTO sync_rows (user_id, tbl, id, data, updated_at, deleted, seq) VALUES (?, ?, ?, NULL, ?, 1, ?)
+            "INSERT INTO sync_rows (user_id, tbl, id, data, updated_at, deleted, seq, received_at) VALUES (?, ?, ?, NULL, ?, 1, ?, ?)
              ON CONFLICT (user_id, tbl, id) DO UPDATE SET data = NULL, updated_at = excluded.updated_at, deleted = 1,
-               seq = excluded.seq",
+               seq = excluded.seq, received_at = excluded.received_at",
         )
         .bind(user)
         .bind(&table)
         .bind(&id)
         .bind(timestamp(deleted_at))
         .bind(seq)
+        .bind(timestamp(now))
         .execute(&mut *tx)
         .await?;
     }

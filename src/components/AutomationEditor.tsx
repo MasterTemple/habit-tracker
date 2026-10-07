@@ -11,7 +11,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { deleteAutomation, newToken, saveAutomation, type Draft } from "@/db/repo"
 import { DEFAULT_SCHEDULE } from "@/domain/schedule"
 import type { Automation, Period } from "@/domain/types"
+import type { Account } from "@/db/db"
 import { useAppData } from "@/hooks/useAppData"
+import { useSync } from "@/hooks/useSync"
 import { CHANNEL_OPTIONS, EVENT_OPTIONS } from "@/lib/labels"
 import { SHEET } from "@/lib/viewport"
 import { NumberInput } from "./NumberInput"
@@ -44,13 +46,18 @@ function blank(kind: AutomationKind, firstTaskId: string): Draft<Automation> {
     case "webhook_in":
       return { ...base, kind, taskId: firstTaskId, amount: 1, token: newToken() }
     case "webhook_out":
-      return { ...base, kind, scope: ALL, url: "", events: ["completed"] }
+      return { ...base, kind, scope: ALL, url: "", events: ["completed"], secret: newToken() }
   }
 }
 
 /** Opens the app and records progress for an incoming webhook (see useShortcutLinks). Works without a server. */
 export function shortcutLink(token: string) {
   return `${location.origin}${import.meta.env.BASE_URL}?hook=${token}`
+}
+
+/** The incoming webhook's server address, once signed in. */
+function serverHookUrl(account: Account | undefined, token: string): string | null {
+  return account?.token ? `${account.serverUrl.replace(/\/+$/, "")}/hooks/${token}` : null
 }
 
 export function AutomationEditor({ target, onClose }: { target: AutomationTarget | null; onClose: () => void }) {
@@ -66,6 +73,7 @@ export function AutomationEditor({ target, onClose }: { target: AutomationTarget
 
 function Form({ target, onDone }: { target: AutomationTarget; onDone: () => void }) {
   const { automations, tasks } = useAppData()
+  const account = useSync()?.account
   const activeTasks = tasks.filter((t) => !t.task.retiredAt)
   const existing = "id" in target ? automations.find((a) => a.id === target.id) : undefined
   const [draft, setDraft] = useState<Draft<Automation>>(
@@ -100,11 +108,15 @@ function Form({ target, onDone }: { target: AutomationTarget; onDone: () => void
           {existing ? "Edit" : "New"} {TITLES[draft.kind].toLowerCase()}
         </SheetTitle>
         <SheetDescription>
-          {draft.kind === "webhook_in"
-            ? "The shortcut link works now. The web address needs the sync server."
-            : draft.kind === "reminder"
-              ? "Sent by your sync server at this time in your current time zone, to devices with notifications on."
-              : "Saved on this device. It starts running once the sync server supports it."}
+          {
+            {
+              webhook_in: "Records progress when its link is opened or its web address is called.",
+              webhook_out: "Your sync server posts to this URL when something happens. Needs you to be signed in.",
+              reminder: "Sent by your sync server at this time in your current time zone, to devices with notifications on.",
+              report: "Saved now; scheduled reports need email, which is coming to the sync server soon.",
+              export: "Saved now; scheduled backups need email, which is coming to the sync server soon.",
+            }[draft.kind]
+          }
         </SheetDescription>
       </SheetHeader>
       <div className="flex flex-col gap-5 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -226,11 +238,11 @@ function Form({ target, onDone }: { target: AutomationTarget; onDone: () => void
               onCopy={copy}
             />
             <CopyField
-              label="Web address (needs the server)"
-              value={`https://<sync server>/hooks/${draft.token}`}
-              hint="Other apps and services will be able to call this directly, without opening the app."
+              label="Web address"
+              value={serverHookUrl(account, draft.token) ?? "Sign in to get a web address"}
+              hint={'Other apps and services can POST (or GET) this without opening the app. Optional JSON body: { "amount": 3, "note": "…" }.'}
               onCopy={copy}
-              disabled
+              disabled={!serverHookUrl(account, draft.token)}
             />
           </>
         )}
@@ -254,6 +266,12 @@ function Form({ target, onDone }: { target: AutomationTarget; onDone: () => void
             <Field label="For">
               <ScopePicker id="webhook" value={draft.scope} onChange={(scope) => set({ scope })} />
             </Field>
+            <CopyField
+              label="Signing secret"
+              value={draft.secret ?? ""}
+              hint="Each delivery has an X-Habit-Signature header: sha256= followed by the HMAC-SHA256 of the body with this secret."
+              onCopy={copy}
+            />
           </>
         )}
 

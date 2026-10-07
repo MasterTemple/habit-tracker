@@ -58,7 +58,15 @@ SIGNUP_CODE=pick-one cargo run -p habit-api   # http://127.0.0.1:8080, database 
 
 Endpoints: `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET`/`PATCH /me`,
 `POST /me/password`, `POST /sync`, `GET /push/key`, `POST`/`DELETE /push/subscribe`, `POST /push/test`,
-`GET /inbox`, `POST /inbox/read`.
+`GET /inbox`, `POST /inbox/read`, `POST`/`GET /hooks/{token}`, `GET /alerts/incoming`.
+
+**Webhooks and alerts.** `/hooks/{token}` records an incoming webhook's amount on its task, dated on the owner's
+wall clock. Each scheduler pass also checks every user with alert rules: progress (reported a minute after the server
+receives an entry, so undone entries never go out), goals completed, limits exceeded, goals left unmet when a period
+ends, missed due times, and broken streaks. Each event goes once to matching accountability alerts (recipients'
+inboxes and devices, by their username here) and outgoing webhooks (JSON, signed with HMAC-SHA256 in
+`X-Habit-Signature`, only to public internet addresses). Turning an alert on, off, or deleting it tells its recipients,
+who can list alerts about them.
 
 **Notifications.** Web Push with RFC 8291 encryption and VAPID (pure Rust crypto; checked against the RFC's
 example). Only real push services are accepted as endpoints. Every notice goes to the user's inbox and a delivery

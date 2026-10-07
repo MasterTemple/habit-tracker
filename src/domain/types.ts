@@ -200,6 +200,8 @@ export interface OutgoingWebhook extends Row {
   scope: Scope
   url: string
   events: TaskEventKind[]
+  /** Signs each delivery (HMAC-SHA256 in the X-Habit-Signature header) so the receiver can verify it. */
+  secret: string
 }
 
 export type Automation = Reminder | ScheduledAction | IncomingWebhook | OutgoingWebhook

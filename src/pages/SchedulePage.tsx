@@ -57,7 +57,7 @@ export function SchedulePage() {
       <TabsContent value="actions">
         <AutomationList
           kinds={["report", "export"]}
-          note="Scheduled reports and backups are saved here and start running once the sync server exists."
+          note="Scheduled reports and backups are saved here; they'll run once email is set up on your sync server."
           empty="No scheduled actions. Send a weekly report to a friend, or email yourself a backup."
           onEdit={setEditing}
         />
@@ -65,7 +65,7 @@ export function SchedulePage() {
       <TabsContent value="webhooks">
         <AutomationList
           kinds={["webhook_in", "webhook_out"]}
-          note="Incoming webhooks give you a shortcut link that works now. Their web address, and outgoing webhooks, need the sync server."
+          note="Incoming webhooks record progress from other apps (a shortcut link, or a web address once you're signed in). Outgoing webhooks are sent by your sync server, so they need you to be signed in."
           empty="No webhooks. Record progress from other apps (e.g. an iOS Shortcut when you open YouTube), or notify another service."
           onEdit={setEditing}
         />

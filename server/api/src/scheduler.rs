@@ -31,7 +31,7 @@ pub fn spawn(state: AppState) {
     });
 }
 
-/// One pass over every user with reminders.
+/// One pass: reminders for every user with them, then alerts and webhooks.
 pub async fn tick(state: &AppState) -> ApiResult<()> {
     let users: Vec<String> = sqlx::query_scalar(
         "SELECT DISTINCT user_id FROM sync_rows
@@ -47,10 +47,15 @@ pub async fn tick(state: &AppState) -> ApiResult<()> {
             }
         }
     }
+    for user_id in crate::alerts::users_with_rules(state).await? {
+        if let Err(e) = crate::alerts::check_user(state, &user_id).await {
+            tracing::error!(error = %e, user = %user_id, "alerts failed");
+        }
+    }
     Ok(())
 }
 
-async fn get_state(state: &AppState, user_id: &str, key: &str) -> ApiResult<Option<String>> {
+pub async fn get_state(state: &AppState, user_id: &str, key: &str) -> ApiResult<Option<String>> {
     Ok(
         sqlx::query_scalar("SELECT value FROM job_state WHERE user_id = ? AND key = ?")
             .bind(user_id)
@@ -60,7 +65,7 @@ async fn get_state(state: &AppState, user_id: &str, key: &str) -> ApiResult<Opti
     )
 }
 
-async fn set_state(state: &AppState, user_id: &str, key: &str, value: &str) -> ApiResult<()> {
+pub async fn set_state(state: &AppState, user_id: &str, key: &str, value: &str) -> ApiResult<()> {
     sqlx::query("INSERT INTO job_state (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value")
         .bind(user_id)
         .bind(key)

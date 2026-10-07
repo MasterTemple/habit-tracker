@@ -308,6 +308,8 @@ pub enum SendResult {
     Sent,
     /// The subscription is gone (unsubscribed / expired): stop using it.
     Gone,
+    /// Won't ever work (e.g. a webhook URL that answers 404, or points at a private address).
+    Rejected(String),
     Retry(String),
 }
 

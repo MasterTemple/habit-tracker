@@ -92,7 +92,7 @@ function Form({ target, onDone }: { target: ContactTarget; onDone: () => void })
         {field("telegram", "Telegram username", { placeholder: "@sam" })}
         {field("signal", "Signal phone number", { type: "tel", placeholder: "+1 555 123 4567" })}
         {field("discordId", "Discord user ID", { inputMode: "numeric", placeholder: "Numbers only, from “Copy User ID”" })}
-        {field("username", "Username in this app (once accounts exist)", { placeholder: "sam" })}
+        {field("username", "Their username on your sync server", { placeholder: "sam (needed to send them alerts)" })}
         <div className="grid gap-1.5">
           <Label htmlFor="contact-notes">Notes</Label>
           <Textarea id="contact-notes" rows={2} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />

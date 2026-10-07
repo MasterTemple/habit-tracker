@@ -123,6 +123,11 @@ fn period_status_summary_and_history() {
     for case in &f.status {
         for (date, expected) in &case.statuses {
             let actual = period_status(&case.ctx, *date, f.today);
+            assert!(
+                !(actual.actual == 0.0 && actual.actual.is_sign_negative()),
+                "{}: an empty total must be +0, not -0 (it would display as \"-0\")",
+                case.name
+            );
             if &actual != expected {
                 failures.push(format!(
                     "{} @ {date}:\n  expected {expected:?}\n  actual   {actual:?}",

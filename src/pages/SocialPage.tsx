@@ -1,6 +1,7 @@
 import { BellRingIcon, EyeIcon, LinkIcon, MessageCircleIcon, PlusIcon, SearchIcon } from "lucide-react"
 import { useState } from "react"
 import { ContactEditor, type ContactTarget } from "@/components/ContactEditor"
+import { IncomingAlerts } from "@/components/IncomingAlerts"
 import { InboxList } from "@/components/InboxList"
 import { BottomAction, ListRow, PinnedTabs, ServerNote } from "@/components/layout"
 import { ShareEditor, type ShareTarget } from "@/components/ShareEditor"
@@ -53,9 +54,10 @@ export function SocialPage() {
         />
       </TabsContent>
       <TabsContent value="accountability">
+        <IncomingAlerts />
         <ShareList
           kind="notify"
-          note="Alerts are saved here and start sending once the sync server exists."
+          note="Alerts are sent by your sync server while you're signed in. A friend gets them in their inbox (and as notifications) when their username here is set on them in Friends."
           empty="No alerts. Tell someone when you make progress, finish a goal, or miss one."
           onEdit={setShare}
         />

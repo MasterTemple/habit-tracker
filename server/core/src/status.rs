@@ -134,8 +134,8 @@ fn sum_events(events: &[TaskEvent], include: impl Fn(&TaskEvent) -> bool) -> f64
     events
         .iter()
         .filter(|e| e.deleted_at.is_none() && include(e))
-        .map(|e| e.amount)
-        .sum()
+        // Fold from +0.0: an empty float `sum()` is -0.0, which would show as "-0".
+        .fold(0.0, |total, e| total + e.amount)
 }
 
 fn count_excused_days(range: DateRange, exceptions: &[TaskException]) -> u32 {

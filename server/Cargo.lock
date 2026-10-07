@@ -690,6 +690,7 @@ dependencies = [
  "chrono-tz",
  "habit-core",
  "hkdf",
+ "hmac",
  "http-body-util",
  "p256",
  "rand 0.9.5",

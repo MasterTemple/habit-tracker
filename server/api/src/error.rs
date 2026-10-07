@@ -17,6 +17,10 @@ pub enum ApiError {
     #[error("{0}")]
     Forbidden(String),
     #[error("{0}")]
+    NotFound(String),
+    #[error("{0}")]
+    Gone(String),
+    #[error("{0}")]
     Conflict(String),
     #[error("Too many attempts. Try again in a few minutes.")]
     RateLimited,
@@ -31,6 +35,8 @@ impl ApiError {
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::BadCredentials => (StatusCode::UNAUTHORIZED, "bad_credentials"),
             Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
+            Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
+            Self::Gone(_) => (StatusCode::GONE, "gone"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             Self::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),

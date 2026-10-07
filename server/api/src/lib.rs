@@ -1,6 +1,7 @@
 //! The habit tracker's sync server. `app()` builds the HTTP service from an [`AppState`];
 //! `main.rs` wires it to real config, a database file, and the system clock.
 
+pub mod alerts;
 pub mod auth;
 pub mod clock;
 pub mod config;
@@ -12,6 +13,7 @@ pub mod routes;
 pub mod scheduler;
 pub mod sync;
 pub mod userdata;
+pub mod webhooks;
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -35,6 +37,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub limiter: Arc<LoginLimiter>,
     pub vapid: Arc<push::Vapid>,
+    pub hook_limiter: Arc<webhooks::HookLimiter>,
     /// For push services and webhooks: short timeouts, no redirects.
     pub http: reqwest::Client,
 }
@@ -58,6 +61,7 @@ impl AppState {
             config: Arc::new(config),
             limiter: Arc::default(),
             vapid: Arc::new(vapid),
+            hook_limiter: Arc::default(),
             http,
         })
     }
@@ -97,6 +101,8 @@ pub fn app(state: AppState) -> Router {
         .merge(sync::router())
         .merge(push::router())
         .merge(notifications::router())
+        .merge(webhooks::router())
+        .merge(alerts::router())
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024))
         .layer(cors)

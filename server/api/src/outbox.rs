@@ -8,6 +8,7 @@ use crate::AppState;
 use crate::clock::timestamp;
 use crate::error::ApiResult;
 use crate::push::{self, PushPayload, SendResult, SubscriptionKeys};
+use crate::webhooks::{self, WebhookJob};
 
 /// Attempts before giving up on a delivery.
 const MAX_ATTEMPTS: i64 = 8;
@@ -82,7 +83,11 @@ pub async fn process_due(state: &AppState) -> usize {
                 Ok(job) => push::send(state, &target, &job.keys, &job.payload).await,
                 Err(e) => SendResult::Retry(format!("bad payload: {e}")),
             },
-            other => SendResult::Retry(format!("unknown channel {other}")),
+            "webhook" => match serde_json::from_str::<WebhookJob>(&payload) {
+                Ok(job) => webhooks::send(state, &id, &job).await,
+                Err(e) => SendResult::Rejected(format!("bad payload: {e}")),
+            },
+            other => SendResult::Rejected(format!("unknown channel {other}")),
         };
         let update = match result {
             SendResult::Sent => {
@@ -107,6 +112,14 @@ pub async fn process_due(state: &AppState) -> usize {
                 .bind(&id)
                 .execute(&state.db)
                 .await
+            }
+            SendResult::Rejected(error) => {
+                tracing::warn!(%id, %channel, %error, "outbox: delivery rejected");
+                sqlx::query("UPDATE outbox SET status = 'failed', attempts = attempts + 1, last_error = ? WHERE id = ?")
+                    .bind(error)
+                    .bind(&id)
+                    .execute(&state.db)
+                    .await
             }
             SendResult::Retry(error) => {
                 let attempts = attempts + 1;
