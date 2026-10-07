@@ -1,3 +1,6 @@
+// Shared by several test files; each uses only some of it.
+#![allow(dead_code)]
+
 //! Test harness: the real app on an in-memory database with a fake clock, called directly
 //! (no network).
 
@@ -17,6 +20,8 @@ use tower::ServiceExt;
 pub struct TestApp {
     pub router: Router,
     pub clock: Arc<FakeClock>,
+    /// For calling background jobs (scheduler, outbox) directly.
+    pub state: AppState,
 }
 
 pub fn start_time() -> DateTime<Utc> {
@@ -31,8 +36,20 @@ impl TestApp {
     pub async fn with_config(config: Config) -> Self {
         let db = connect("sqlite::memory:").await.expect("database");
         let clock = Arc::new(FakeClock::new(start_time()));
-        let router = app(AppState::new(db, clock.clone(), config));
-        Self { router, clock }
+        let state = AppState::new(db, clock.clone(), config)
+            .await
+            .expect("state");
+        let router = app(state.clone());
+        Self {
+            router,
+            clock,
+            state,
+        }
+    }
+
+    pub fn clock_now(&self) -> DateTime<Utc> {
+        use habit_api::clock::Clock;
+        self.clock.now()
     }
 
     /// Sends a request; returns status and parsed JSON (Null for empty bodies).

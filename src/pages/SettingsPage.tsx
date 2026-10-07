@@ -2,6 +2,7 @@ import { DownloadIcon, Share2Icon, Trash2Icon, UploadIcon } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 import { AccountSection } from "@/components/AccountSection"
+import { NotificationsSection } from "@/components/NotificationsSection"
 import { PageHeader } from "@/components/PageHeader"
 import { ShareSheet } from "@/components/ShareSheet"
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,12 @@ export function SettingsPage() {
       <Section title="Account & sync">
         <AccountSection />
       </Section>
+
+      {signedIn && (
+        <Section title="Notifications">
+          <NotificationsSection />
+        </Section>
+      )}
 
       <Section title="Profile">
         <p className="-mt-1 text-xs text-muted-foreground">

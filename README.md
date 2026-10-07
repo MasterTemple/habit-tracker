@@ -54,9 +54,16 @@ SIGNUP_CODE=pick-one cargo run -p habit-api   # http://127.0.0.1:8080, database 
 | `ALLOWED_ORIGINS` | `https://mastertemple.github.io,https://localhost:5173` | Web app origins allowed to call the API |
 | `SIGNUP_CODE` | unset (open sign-up) | Required to create an account when set; set it on a public server |
 | `SESSION_DAYS` | `90` | Sessions expire after this long unused |
+| `VAPID_SUBJECT` | `mailto:admin@localhost` | Contact address sent to push services (use a real one) |
 
 Endpoints: `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET`/`PATCH /me`,
-`POST /me/password`, `POST /sync`. Passwords (min 10 characters) are stored as Argon2id hashes; session tokens are stored only
+`POST /me/password`, `POST /sync`, `GET /push/key`, `POST`/`DELETE /push/subscribe`, `POST /push/test`,
+`GET /inbox`, `POST /inbox/read`.
+
+**Notifications.** Web Push with RFC 8291 encryption and VAPID (pure Rust crypto; checked against the RFC's
+example). Only real push services are accepted as endpoints. Every notice goes to the user's inbox and a delivery
+queue that retries with backoff and drops unsubscribed devices. A scheduler (every 30 s) fires reminders at their
+time in the user's current zone, skipping ones whose tasks are already done when "only if not done" is set. Passwords (min 10 characters) are stored as Argon2id hashes; session tokens are stored only
 as SHA-256 hashes; failed logins lock a username for 15 minutes after 10 tries.
 
 **Sync.** Every synced row in the app carries `dirty: 1` (set automatically by Dexie hooks) until the server has

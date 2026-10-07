@@ -1,6 +1,7 @@
 import { BellRingIcon, EyeIcon, LinkIcon, MessageCircleIcon, PlusIcon, SearchIcon } from "lucide-react"
 import { useState } from "react"
 import { ContactEditor, type ContactTarget } from "@/components/ContactEditor"
+import { InboxList } from "@/components/InboxList"
 import { BottomAction, ListRow, PinnedTabs, ServerNote } from "@/components/layout"
 import { ShareEditor, type ShareTarget } from "@/components/ShareEditor"
 import { Button } from "@/components/ui/button"
@@ -16,12 +17,13 @@ import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { saveShare } from "@/db/repo"
 import type { Share } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
-import { useViewTab } from "@/hooks/useNav"
+import { useNav, useViewTab } from "@/hooks/useNav"
 import { contactLinks, initials } from "@/lib/contacts"
 import { EVENT_OPTIONS, RELATIONSHIPS } from "@/lib/labels"
 import { scopeSummary } from "@/lib/scope"
 
 const TABS = [
+  { value: "inbox", label: "Inbox" },
   { value: "friends", label: "Friends" },
   { value: "sharing", label: "Sharing" },
   { value: "accountability", label: "Accountability" },
@@ -29,12 +31,16 @@ const TABS = [
 
 export function SocialPage() {
   const [tab, setTab] = useViewTab("social")
+  const { openInbox, clearOpenInbox } = useNav()
   const [contact, setContact] = useState<ContactTarget | null>(null)
   const [share, setShare] = useState<ShareTarget | null>(null)
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
       <PinnedTabs tabs={TABS} />
+      <TabsContent value="inbox">
+        <InboxList openId={openInbox} onOpened={clearOpenInbox} />
+      </TabsContent>
       <TabsContent value="friends">
         <FriendsList onEdit={setContact} />
       </TabsContent>

@@ -49,7 +49,7 @@ export function SchedulePage() {
       <TabsContent value="reminders">
         <AutomationList
           kinds={["reminder"]}
-          note="Reminders are saved here and start sending once the sync server exists (iPhone web apps can't schedule their own notifications)."
+          note="Reminders are sent by your sync server, so sign in (Settings → Account & sync) and turn on notifications for this device. They also land in Social → Inbox."
           empty="No reminders. Add one to get nudged at a set time, for one task or a whole category."
           onEdit={setEditing}
         />

@@ -102,7 +102,9 @@ function Form({ target, onDone }: { target: AutomationTarget; onDone: () => void
         <SheetDescription>
           {draft.kind === "webhook_in"
             ? "The shortcut link works now. The web address needs the sync server."
-            : "Saved on this device. It starts running once the sync server exists."}
+            : draft.kind === "reminder"
+              ? "Sent by your sync server at this time in your current time zone, to devices with notifications on."
+              : "Saved on this device. It starts running once the sync server supports it."}
         </SheetDescription>
       </SheetHeader>
       <div className="flex flex-col gap-5 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">

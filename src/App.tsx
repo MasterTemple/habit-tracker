@@ -5,6 +5,8 @@ import { AppDataProvider } from "@/hooks/useAppData"
 import { EditorsProvider } from "@/hooks/useEditors"
 import { NavProvider, useNav, type PageId } from "@/hooks/useNav"
 import { useShortcutLinks } from "@/hooks/useShortcutLinks"
+import { useInbox } from "@/hooks/useInbox"
+import { useNotificationTaps } from "@/hooks/useNotificationTaps"
 import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/lib/utils"
 import { startAutoSync } from "@/sync/engine"
@@ -34,12 +36,14 @@ export default function App() {
 }
 
 function Shell() {
-  const { page, direction, setPage, step } = useNav()
+  const { page, direction, setPage, step, showInboxItem } = useNav()
+  const { unread } = useInbox()
   const Page = PAGES.find((p) => p.id === page)!.component
   const main = useRef<HTMLElement>(null)
   useSwipe(main, step)
   useShortcutLinks()
   useEffect(() => startAutoSync(), [])
+  useNotificationTaps(showInboxItem)
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-background">
@@ -68,7 +72,12 @@ function Shell() {
               )}
               aria-current={page === id ? "page" : undefined}
             >
-              <Icon className="size-5" />
+              <span className="relative">
+                <Icon className="size-5" />
+                {id === "social" && unread > 0 && (
+                  <span className="absolute -top-1 -right-1.5 size-2.5 rounded-full border-2 border-background bg-primary" aria-label={`${unread} unread`} />
+                )}
+              </span>
               {label}
             </button>
           ))}

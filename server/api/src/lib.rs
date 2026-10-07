@@ -5,8 +5,13 @@ pub mod auth;
 pub mod clock;
 pub mod config;
 pub mod error;
+pub mod notifications;
+pub mod outbox;
+pub mod push;
 pub mod routes;
+pub mod scheduler;
 pub mod sync;
+pub mod userdata;
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -29,16 +34,32 @@ pub struct AppState {
     pub clock: Arc<dyn Clock>,
     pub config: Arc<Config>,
     pub limiter: Arc<LoginLimiter>,
+    pub vapid: Arc<push::Vapid>,
+    /// For push services and webhooks: short timeouts, no redirects.
+    pub http: reqwest::Client,
 }
 
 impl AppState {
-    pub fn new(db: SqlitePool, clock: Arc<dyn Clock>, config: Config) -> Self {
-        Self {
+    pub async fn new(
+        db: SqlitePool,
+        clock: Arc<dyn Clock>,
+        config: Config,
+    ) -> Result<Self, sqlx::Error> {
+        let vapid = push::Vapid::load_or_create(&db, &config.vapid_subject).await?;
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none())
+            .user_agent(concat!("habit-tracker/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .expect("http client");
+        Ok(Self {
             db,
             clock,
             config: Arc::new(config),
             limiter: Arc::default(),
-        }
+            vapid: Arc::new(vapid),
+            http,
+        })
     }
 }
 
@@ -74,6 +95,8 @@ pub fn app(state: AppState) -> Router {
 
     routes::router()
         .merge(sync::router())
+        .merge(push::router())
+        .merge(notifications::router())
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024))
         .layer(cors)

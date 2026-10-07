@@ -13,6 +13,10 @@ pub struct Config {
     pub signup_code: Option<String>,
     /// Sessions expire after this many days without use.
     pub session_days: i64,
+    /// `VAPID_SUBJECT`: contact for push services, e.g. `mailto:you@example.com`.
+    pub vapid_subject: String,
+    /// Tests only: allow push endpoints and webhooks on local/private addresses.
+    pub allow_private_targets: bool,
 }
 
 impl Config {
@@ -31,6 +35,8 @@ impl Config {
             session_days: var("SESSION_DAYS")
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90),
+            vapid_subject: var("VAPID_SUBJECT").unwrap_or_else(|| "mailto:admin@localhost".into()),
+            allow_private_targets: false,
         }
     }
 
@@ -42,6 +48,8 @@ impl Config {
             allowed_origins: vec!["https://localhost:5173".into()],
             signup_code: None,
             session_days: 90,
+            vapid_subject: "mailto:test@example.com".into(),
+            allow_private_targets: true,
         }
     }
 }

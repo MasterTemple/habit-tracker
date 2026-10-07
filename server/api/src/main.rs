@@ -23,7 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "listening"
     );
 
-    let state = AppState::new(db, Arc::new(SystemClock), config);
+    let state = AppState::new(db, Arc::new(SystemClock), config).await?;
+    habit_api::scheduler::spawn(state.clone());
     axum::serve(listener, app(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

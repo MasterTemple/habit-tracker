@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 export const VIEWS = [
   { page: "tasks", tabs: ["tasks", "categories"] },
   { page: "schedule", tabs: ["breaks", "reminders", "actions", "webhooks"] },
-  { page: "social", tabs: ["friends", "sharing", "accountability"] },
+  { page: "social", tabs: ["inbox", "friends", "sharing", "accountability"] },
   { page: "settings", tabs: [] },
 ] as const
 
@@ -19,11 +19,17 @@ interface Nav {
   setTab: (page: PageId, tab: string) => void
   /** Next (1) or previous (-1) tab, crossing into the neighbouring view at the edges. */
   step: (direction: 1 | -1) => void
+  /** An inbox item to show (e.g. after tapping its notification). */
+  openInbox: string | null
+  showInboxItem: (id: string) => void
+  clearOpenInbox: () => void
 }
 
 const NavContext = createContext<Nav | null>(null)
 
-const STEPS = VIEWS.flatMap((v) => (v.tabs.length ? v.tabs.map((tab) => ({ page: v.page, tab })) : [{ page: v.page, tab: "" }]))
+const STEPS = VIEWS.flatMap((v) =>
+  v.tabs.length ? v.tabs.map((tab) => ({ page: v.page, tab })) : [{ page: v.page, tab: "" }],
+)
 const pageIndex = (page: PageId) => VIEWS.findIndex((v) => v.page === page)
 
 export function NavProvider({ children }: { children: ReactNode }) {
@@ -56,9 +62,17 @@ export function NavProvider({ children }: { children: ReactNode }) {
     [page, tabs],
   )
 
+  const [openInbox, setOpenInbox] = useState<string | null>(null)
+  const showInboxItem = useCallback((id: string) => {
+    setTabs((t) => ({ ...t, social: "inbox" }))
+    setPageState("social")
+    setOpenInbox(id)
+  }, [])
+  const clearOpenInbox = useCallback(() => setOpenInbox(null), [])
+
   const value = useMemo<Nav>(
-    () => ({ page, direction, setPage, tabOf: (p) => tabs[p], setTab, step }),
-    [page, direction, setPage, tabs, setTab, step],
+    () => ({ page, direction, setPage, tabOf: (p) => tabs[p], setTab, step, openInbox, showInboxItem, clearOpenInbox }),
+    [page, direction, setPage, tabs, setTab, step, openInbox, showInboxItem, clearOpenInbox],
   )
   return <NavContext.Provider value={value}>{children}</NavContext.Provider>
 }
