@@ -22,6 +22,11 @@ export default defineConfig({
       '/api': { target: 'http://127.0.0.1:8080', rewrite: (path) => path.replace(/^\/api/, '') },
     },
   },
+  build: {
+    // Lazy chunks (2,000 icons, charts) only depend on code that's already loaded at startup,
+    // so preload lists would add ~100 KB to the main bundle for nothing.
+    modulePreload: false,
+  },
   test: {
     environment: 'node',
   },

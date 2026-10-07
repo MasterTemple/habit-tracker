@@ -1,6 +1,6 @@
 import { format } from "date-fns"
 import { ChevronDownIcon, TreePalmIcon, PencilIcon, Trash2Icon } from "lucide-react"
-import { useMemo, useState } from "react"
+import { lazy, Suspense, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -39,6 +39,10 @@ export function TaskDetail({ view, today, onClose, actions }: Props) {
     </Sheet>
   )
 }
+
+// The chart library loads with the first detail sheet, not at startup.
+const TaskProgressChart = lazy(() => import("./charts").then((m) => ({ default: m.TaskProgressChart })))
+const HourChart = lazy(() => import("./charts").then((m) => ({ default: m.HourChart })))
 
 const STATE_STYLE: Record<PeriodStatus["state"], string> = {
   open: "",
@@ -130,6 +134,11 @@ function Detail({ view, today, actions }: { view: TaskView; today: string; actio
             ))}
           </div>
         )}
+
+        <Suspense fallback={<div className="h-52" />}>
+          <TaskProgressChart view={view} today={today} />
+          <HourChart view={view} />
+        </Suspense>
 
         <div className="grid gap-1">
           <h3 className="text-sm font-medium">History</h3>

@@ -1,9 +1,12 @@
 import { format } from "date-fns"
+import { ChevronRightIcon } from "lucide-react"
+import { useState } from "react"
 import { parseLocalDate } from "@/domain/dates"
 import { overview, taskFraction } from "@/domain/status"
 import type { Category } from "@/domain/types"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
+import { InsightsSheet } from "./InsightsSheet"
 import { CreateButton } from "./PageHeader"
 
 const RADIUS = 26
@@ -28,6 +31,9 @@ export function DailyOverview({ tasks, filter, readOnly }: Props) {
   const app = useAppData()
   const { today, categories } = readOnly ?? app
   const { openTask } = useEditors()
+  const [insights, setInsights] = useState(false)
+  const settings = tasks[0]?.ctx.settings ?? app.settings
+  const filteredTo = categories.filter((c) => filter.includes(c.id)).map((c) => c.name)
   const o = overview(tasks.map((t) => ({ task: t.task, current: t.summary.current })))
   const percent = Math.round(o.progress * 100)
 
@@ -54,43 +60,59 @@ export function DailyOverview({ tasks, filter, readOnly }: Props) {
 
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
-      <div className="relative size-16 shrink-0">
-        <svg viewBox="0 0 64 64" className="size-16 -rotate-90">
-          <circle cx="32" cy="32" r={RADIUS} fill="none" strokeWidth="7" className="stroke-muted" />
-          {arcs.map((arc) =>
-            arc.length > 0 ? (
-              <circle
-                key={arc.key}
-                cx="32"
-                cy="32"
-                r={RADIUS}
-                fill="none"
-                strokeWidth="7"
-                stroke={arc.color}
-                strokeDasharray={`${arc.length} ${CIRCUMFERENCE}`}
-                strokeDashoffset={-arc.offset}
-                style={{ transition: "stroke-dasharray 300ms, stroke-dashoffset 300ms" }}
-              />
-            ) : null,
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        onClick={() => setInsights(true)}
+        aria-label="Insights"
+      >
+        <div className="relative size-16 shrink-0">
+          <svg viewBox="0 0 64 64" className="size-16 -rotate-90">
+            <circle cx="32" cy="32" r={RADIUS} fill="none" strokeWidth="7" className="stroke-muted" />
+            {arcs.map((arc) =>
+              arc.length > 0 ? (
+                <circle
+                  key={arc.key}
+                  cx="32"
+                  cy="32"
+                  r={RADIUS}
+                  fill="none"
+                  strokeWidth="7"
+                  stroke={arc.color}
+                  strokeDasharray={`${arc.length} ${CIRCUMFERENCE}`}
+                  strokeDashoffset={-arc.offset}
+                  style={{ transition: "stroke-dasharray 300ms, stroke-dashoffset 300ms" }}
+                />
+              ) : null,
+            )}
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold tabular-nums">
+            {o.counted > 0 ? `${percent}%` : "–"}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1 text-sm">
+          <div className="text-xs text-muted-foreground">{format(parseLocalDate(today), "EEEE, MMMM d")}</div>
+          <div className="font-medium">{o.counted > 0 ? `${o.done} of ${o.counted} on track` : "No goals yet"}</div>
+          {o.counted > 0 && (
+            <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+              {o.remaining > 0 && <span>{o.remaining} to go</span>}
+              {o.overdue > 0 && <span className="font-medium text-destructive">{o.overdue} overdue</span>}
+              {o.over > 0 && <span className="font-medium text-destructive">{o.over} over limit</span>}
+              {o.excused > 0 && <span>{o.excused} on break</span>}
+              {o.remaining === 0 && o.over === 0 && <span>All done 🎉</span>}
+            </div>
           )}
-        </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold tabular-nums">
-          {o.counted > 0 ? `${percent}%` : "–"}
-        </span>
-      </div>
-      <div className="min-w-0 flex-1 text-sm">
-        <div className="text-xs text-muted-foreground">{format(parseLocalDate(today), "EEEE, MMMM d")}</div>
-        <div className="font-medium">{o.counted > 0 ? `${o.done} of ${o.counted} on track` : "No goals yet"}</div>
-        {o.counted > 0 && (
-          <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-            {o.remaining > 0 && <span>{o.remaining} to go</span>}
-            {o.overdue > 0 && <span className="font-medium text-destructive">{o.overdue} overdue</span>}
-            {o.over > 0 && <span className="font-medium text-destructive">{o.over} over limit</span>}
-            {o.excused > 0 && <span>{o.excused} on break</span>}
-            {o.remaining === 0 && o.over === 0 && <span>All done 🎉</span>}
-          </div>
-        )}
-      </div>
+        </div>
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+      </button>
+      <InsightsSheet
+        open={insights}
+        onOpenChange={setInsights}
+        tasks={tasks}
+        today={today}
+        weekStartsOn={settings.weekStartsOn}
+        scope={filteredTo.length > 0 ? filteredTo.join(", ") : "All tasks"}
+      />
       {!readOnly && <CreateButton onClick={() => openTask({ mode: "new" })} label="New task" />}
     </div>
   )
