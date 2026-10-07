@@ -3,8 +3,8 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 /** Bottom-nav views in order, each with its top tabs (if any). Swiping walks this sequence. */
 export const VIEWS = [
   { page: "tasks", tabs: ["tasks", "categories"] },
-  { page: "schedule", tabs: ["breaks", "automations"] },
-  { page: "social", tabs: [] },
+  { page: "schedule", tabs: ["breaks", "reminders", "actions", "webhooks"] },
+  { page: "social", tabs: ["friends", "sharing", "accountability"] },
   { page: "settings", tabs: [] },
 ] as const
 

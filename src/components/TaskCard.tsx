@@ -8,12 +8,15 @@ import {
   HistoryIcon,
   PencilIcon,
   SlidersHorizontalIcon,
+  Trash2Icon,
   TreePalmIcon,
   Undo2Icon,
 } from "lucide-react"
+import { useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
-import { recordEvent, restoreEvent, retireTask, undoLast, unretireTask } from "@/db/repo"
+import { deleteTask, recordEvent, restoreEvent, retireTask, undoLast, unretireTask } from "@/db/repo"
 import { inRange } from "@/domain/dates"
 import { isCheckbox, isExcused } from "@/domain/status"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
@@ -45,6 +48,7 @@ interface Props {
 export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
   const { openTask } = useEditors()
   const { settings } = useAppData()
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const { task, target, categories, summary, ctx } = view
   const { current } = summary
   const retired = !!task.retiredAt
@@ -207,8 +211,23 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
                   <ArchiveIcon /> Retire
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
+                <Trash2Icon /> Delete…
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <DeleteTaskDialog
+            open={confirmDelete}
+            onOpenChange={setConfirmDelete}
+            name={task.name}
+            entries={ctx.events.length}
+            retired={retired}
+            onRetire={() => retireTask(task.id)}
+            onDelete={async () => {
+              await deleteTask(task.id)
+              toast(`Deleted “${task.name}”`)
+            }}
+          />
         </div>
       </div>
 
@@ -227,5 +246,60 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
         </div>
       </div>
     </div>
+  )
+}
+
+function DeleteTaskDialog({
+  open,
+  onOpenChange,
+  name,
+  entries,
+  retired,
+  onRetire,
+  onDelete,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  name: string
+  entries: number
+  retired: boolean
+  onRetire: () => void
+  onDelete: () => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete “{name}”?</DialogTitle>
+          <DialogDescription>
+            This permanently deletes the task and {entries === 1 ? "its 1 entry" : `all ${entries} of its entries`}, and
+            removes it from breaks, reminders, and sharing. It can't be undone.
+            {!retired && " To hide it but keep its history, retire it instead."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          {!retired && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onRetire()
+                onOpenChange(false)
+              }}
+            >
+              Retire instead
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            onClick={() => {
+              onDelete()
+              onOpenChange(false)
+            }}
+          >
+            Delete permanently
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -4,10 +4,13 @@ import { periodRange, toLocalDate, type DateRange } from "@/domain/dates"
 import { currentTarget } from "@/domain/status"
 import {
   DEFAULT_SETTINGS,
+  type Automation,
   type Category,
+  type Contact,
   type DisplayMode,
   type Period,
   type Settings,
+  type Share,
   type TaskEvent,
   type TaskException,
   type TaskTarget,
@@ -136,6 +139,28 @@ export async function updateTask(id: string, input: TaskInput) {
 
     await db.taskCategories.where("taskId").equals(id).delete()
     await db.taskCategories.bulkAdd(input.categoryIds.map((categoryId) => ({ taskId: id, categoryId })))
+  })
+}
+
+/**
+ * Permanently deletes a task with its goals and entries, and removes it from breaks,
+ * automations, and shares. (A hard delete: once sync exists this will need a tombstone.)
+ */
+export async function deleteTask(id: string) {
+  const tables = [db.tasks, db.targets, db.events, db.taskCategories, db.exceptions, db.automations, db.shares]
+  await db.transaction("rw", tables, async () => {
+    await db.targets.where("taskId").equals(id).delete()
+    await db.events.where("taskId").equals(id).delete()
+    await db.taskCategories.where("taskId").equals(id).delete()
+    await db.tasks.delete(id)
+    await pruneReferences("taskIds", id)
+    // Webhooks that record progress for this task have nothing left to do.
+    await db.automations
+      .filter((a) => a.kind === "webhook_in" && a.taskId === id)
+      .modify((a) => {
+        a.deletedAt = now()
+        a.updatedAt = now()
+      })
   })
 }
 
@@ -284,17 +309,30 @@ export async function reorderCategory(activeId: string, overId: string) {
 }
 
 export async function deleteCategory(id: string) {
-  await db.transaction("rw", [db.categories, db.taskCategories, db.exceptions], async () => {
+  await db.transaction("rw", [db.categories, db.taskCategories, db.exceptions, db.automations, db.shares], async () => {
     await db.categories.update(id, { deletedAt: now(), updatedAt: now() })
     await db.taskCategories.where("categoryId").equals(id).delete()
-    await db.exceptions
-      .where("categoryIds")
-      .equals(id)
-      .modify((e) => {
-        e.categoryIds = e.categoryIds.filter((c) => c !== id)
-        e.updatedAt = now()
-      })
+    await pruneReferences("categoryIds", id)
   })
+}
+
+/** Removes a task or category from every break, automation, and share that names it. */
+async function pruneReferences(key: "taskIds" | "categoryIds", id: string) {
+  const stamp = now()
+  await db.exceptions
+    .where(key)
+    .equals(id)
+    .modify((e) => {
+      e[key] = e[key].filter((x) => x !== id)
+      e.updatedAt = stamp
+    })
+  const prune = (row: Automation | Share) => {
+    if (!("scope" in row) || !row.scope[key].includes(id)) return
+    row.scope = { ...row.scope, [key]: row.scope[key].filter((x) => x !== id) }
+    row.updatedAt = stamp
+  }
+  await db.automations.toCollection().modify(prune)
+  await db.shares.toCollection().modify(prune)
 }
 
 // ---------- exceptions ----------
@@ -325,9 +363,65 @@ export async function deleteException(id: string) {
   await db.exceptions.update(id, { deletedAt: now(), updatedAt: now() })
 }
 
+// ---------- automations, contacts, shares ----------
+
+/** A row as an editor produces it: no bookkeeping fields, and no id yet when new. */
+export type Draft<T> = T extends unknown ? Omit<T, "id" | "updatedAt" | "deletedAt"> & { id?: string } : never
+
+type Stored = { id: string; updatedAt: string; deletedAt: string | null }
+
+async function save<T extends Stored>(table: EntityTable<T, "id">, draft: Draft<T>): Promise<string> {
+  const id = draft.id ?? uuid()
+  await table.put({ ...draft, id, updatedAt: now(), deletedAt: null } as unknown as T)
+  return id
+}
+
+async function softDelete<T extends Stored>(table: EntityTable<T, "id">, id: string) {
+  await table
+    .filter((r) => r.id === id)
+    .modify((r) => {
+      r.deletedAt = now()
+      r.updatedAt = now()
+    })
+}
+
+export const saveAutomation = (draft: Draft<Automation>) => save(db.automations, draft)
+export const deleteAutomation = (id: string) => softDelete(db.automations, id)
+export const saveContact = (draft: Draft<Contact>) => save(db.contacts, draft)
+export const saveShare = (draft: Draft<Share>) => save(db.shares, draft)
+export const deleteShare = (id: string) => softDelete(db.shares, id)
+
+/** Deletes a contact and removes them from every share, alert, and report. */
+export async function deleteContact(id: string) {
+  await db.transaction("rw", [db.contacts, db.shares, db.automations], async () => {
+    await softDelete(db.contacts, id)
+    const prune = (row: Automation | Share) => {
+      if (!("contactIds" in row) || !row.contactIds.includes(id)) return
+      row.contactIds = row.contactIds.filter((c) => c !== id)
+      row.updatedAt = now()
+    }
+    await db.shares.toCollection().modify(prune)
+    await db.automations.toCollection().modify(prune)
+  })
+}
+
+/** A random, URL-safe token for links and webhook URLs. */
+export function newToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
+}
+
+/** Erases everything on this device, settings included. */
+export async function resetAll() {
+  await db.transaction("rw", db.tables, () => Promise.all(db.tables.map((t) => t.clear())))
+}
+
 // ---------- export / import ----------
 
-export const EXPORT_VERSION = 3
+export const EXPORT_VERSION = 4
 
 export async function exportData() {
   return {
@@ -341,6 +435,9 @@ export async function exportData() {
     categories: await db.categories.toArray(),
     taskCategories: await db.taskCategories.toArray(),
     exceptions: await db.exceptions.toArray(),
+    automations: await db.automations.toArray(),
+    contacts: await db.contacts.toArray(),
+    shares: await db.shares.toArray(),
   }
 }
 
@@ -348,7 +445,7 @@ export type ExportData = Awaited<ReturnType<typeof exportData>>
 
 /** Brings rows from older exports up to the current shape. */
 function normalizeExport(data: ExportData): ExportData {
-  if (data?.app !== "habit-tracker" || ![1, 2, EXPORT_VERSION].includes(data.version)) {
+  if (data?.app !== "habit-tracker" || ![1, 2, 3, EXPORT_VERSION].includes(data.version)) {
     throw new Error("Not a habit-tracker export, or from an unsupported version")
   }
   return {
@@ -356,6 +453,10 @@ function normalizeExport(data: ExportData): ExportData {
     tasks: data.tasks.map((t) => ({ ...t, unit: t.unit ?? "" })),
     categories: data.categories.map((c) => ({ ...c, icon: c.icon ?? "" })),
     exceptions: data.exceptions.map((e) => (isExceptionV1(e) ? migrateExceptionV1(e) : e)),
+    // Added in v4.
+    automations: data.automations ?? [],
+    contacts: data.contacts ?? [],
+    shares: data.shares ?? [],
   }
 }
 
@@ -376,6 +477,9 @@ export async function importData(raw: ExportData, mode: "replace" | "merge" = "r
       await db.categories.bulkAdd(data.categories)
       await db.taskCategories.bulkAdd(data.taskCategories)
       await db.exceptions.bulkAdd(data.exceptions)
+      await db.automations.bulkAdd(data.automations)
+      await db.contacts.bulkAdd(data.contacts)
+      await db.shares.bulkAdd(data.shares)
       return
     }
     await mergeNewest(db.tasks, data.tasks)
@@ -383,6 +487,9 @@ export async function importData(raw: ExportData, mode: "replace" | "merge" = "r
     await mergeNewest(db.events, data.events)
     await mergeNewest(db.categories, data.categories)
     await mergeNewest(db.exceptions, data.exceptions)
+    await mergeNewest(db.automations, data.automations)
+    await mergeNewest(db.contacts, data.contacts)
+    await mergeNewest(db.shares, data.shares)
     await db.taskCategories.bulkPut(data.taskCategories)
   })
 }

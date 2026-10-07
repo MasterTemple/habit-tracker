@@ -1,33 +1,167 @@
-import { BellIcon, CalendarClockIcon, ChevronDownIcon, PlusIcon, TreePalmIcon, WebhookIcon } from "lucide-react"
+import {
+  BellIcon,
+  ChevronDownIcon,
+  DatabaseBackupIcon,
+  FileTextIcon,
+  PlusIcon,
+  TreePalmIcon,
+  WebhookIcon,
+} from "lucide-react"
 import { useState } from "react"
-import { PageHeader } from "@/components/PageHeader"
+import { AutomationEditor, type AutomationKind, type AutomationTarget } from "@/components/AutomationEditor"
+import { BottomAction, ListRow, PinnedTabs, ServerNote } from "@/components/layout"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { TaskException } from "@/domain/types"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
+import { saveAutomation } from "@/db/repo"
+import { describeSchedule } from "@/domain/schedule"
+import type { Automation, TaskException } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
 import { useViewTab } from "@/hooks/useNav"
 import { breakDates, breakScopeNames } from "@/lib/breaks"
+import { scopeSummary } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
+const TABS = [
+  { value: "breaks", label: "Breaks" },
+  { value: "reminders", label: "Reminders" },
+  { value: "actions", label: "Actions" },
+  { value: "webhooks", label: "Webhooks" },
+]
+
 export function SchedulePage() {
-  const { openBreak } = useEditors()
   const [tab, setTab] = useViewTab("schedule")
+  const [editing, setEditing] = useState<AutomationTarget | null>(null)
+
+  return (
+    <Tabs value={tab} onValueChange={setTab}>
+      <PinnedTabs tabs={TABS} />
+      <TabsContent value="breaks">
+        <BreaksList />
+      </TabsContent>
+      <TabsContent value="reminders">
+        <AutomationList
+          kinds={["reminder"]}
+          note="Reminders are saved here and start sending once the sync server exists (iPhone web apps can't schedule their own notifications)."
+          empty="No reminders. Add one to get nudged at a set time, for one task or a whole category."
+          onEdit={setEditing}
+        />
+      </TabsContent>
+      <TabsContent value="actions">
+        <AutomationList
+          kinds={["report", "export"]}
+          note="Scheduled reports and backups are saved here and start running once the sync server exists."
+          empty="No scheduled actions. Send a weekly report to a friend, or email yourself a backup."
+          onEdit={setEditing}
+        />
+      </TabsContent>
+      <TabsContent value="webhooks">
+        <AutomationList
+          kinds={["webhook_in", "webhook_out"]}
+          note="Incoming webhooks give you a shortcut link that works now. Their web address, and outgoing webhooks, need the sync server."
+          empty="No webhooks. Record progress from other apps (e.g. an iOS Shortcut when you open YouTube), or notify another service."
+          onEdit={setEditing}
+        />
+      </TabsContent>
+      <AutomationEditor target={editing} onClose={() => setEditing(null)} />
+    </Tabs>
+  )
+}
+
+const KIND_INFO: Record<AutomationKind, { label: string; icon: typeof BellIcon }> = {
+  reminder: { label: "Reminder", icon: BellIcon },
+  report: { label: "Report", icon: FileTextIcon },
+  export: { label: "Backup", icon: DatabaseBackupIcon },
+  webhook_in: { label: "Incoming webhook", icon: WebhookIcon },
+  webhook_out: { label: "Outgoing webhook", icon: WebhookIcon },
+}
+
+function AutomationList({
+  kinds,
+  note,
+  empty,
+  onEdit,
+}: {
+  kinds: AutomationKind[]
+  note: string
+  empty: string
+  onEdit: (target: AutomationTarget) => void
+}) {
+  const { automations, tasks, categories } = useAppData()
+  const items = automations.filter((a) => kinds.includes(a.kind))
+
+  const subtitle = (a: Automation) => {
+    switch (a.kind) {
+      case "reminder":
+      case "report":
+        return `${describeSchedule(a.schedule)} · ${scopeSummary(a.scope, categories, tasks)}`
+      case "export":
+        return describeSchedule(a.schedule)
+      case "webhook_in": {
+        const task = tasks.find((t) => t.task.id === a.taskId)?.task.name ?? "Deleted task"
+        return `Records ${a.amount > 0 ? "+" : ""}${a.amount} on ${task}`
+      }
+      case "webhook_out":
+        return a.url
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <PageHeader title="Schedule" onCreate={() => openBreak({})} createLabel="New break" />
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="w-full">
-          <TabsTrigger value="breaks">Breaks</TabsTrigger>
-          <TabsTrigger value="automations">Automations</TabsTrigger>
-        </TabsList>
-        <TabsContent value="breaks" className="mt-2">
-          <BreaksList />
-        </TabsContent>
-        <TabsContent value="automations" className="mt-2">
-          <Automations />
-        </TabsContent>
-      </Tabs>
+      <ServerNote>{note}</ServerNote>
+      {items.length === 0 && <p className="mt-6 text-center text-sm text-muted-foreground">{empty}</p>}
+      {items.map((a) => {
+        const { icon: Icon, label } = KIND_INFO[a.kind]
+        return (
+          <ListRow
+            key={a.id}
+            icon={<Icon className="size-4" />}
+            title={a.name || label}
+            subtitle={subtitle(a)}
+            muted={!a.enabled}
+            onClick={() => onEdit({ id: a.id })}
+            trailing={
+              <Switch
+                checked={a.enabled}
+                onCheckedChange={(enabled) => saveAutomation({ ...a, enabled })}
+                aria-label={`Turn ${a.name || label} ${a.enabled ? "off" : "on"}`}
+              />
+            }
+          />
+        )
+      })}
+      <BottomAction>
+        {kinds.length === 1 ? (
+          <Button variant="outline" className="w-full" onClick={() => onEdit({ kind: kinds[0] })}>
+            <PlusIcon /> New {KIND_INFO[kinds[0]].label.toLowerCase()}
+          </Button>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-full">
+                <PlusIcon /> New…
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" side="top">
+              {kinds.map((kind) => {
+                const { icon: Icon, label } = KIND_INFO[kind]
+                return (
+                  <DropdownMenuItem key={kind} onSelect={() => onEdit({ kind })}>
+                    <Icon /> {label}
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </BottomAction>
     </div>
   )
 }
@@ -42,21 +176,14 @@ function BreaksList() {
   const upcoming = byStart.filter((e) => e.startDate > today)
   const past = byStart.filter((e) => e.endDate < today).reverse()
 
-  if (exceptions.length === 0) {
-    return (
-      <div className="mt-10 flex flex-col items-center gap-3 text-center text-muted-foreground">
-        <TreePalmIcon className="size-8" />
-        <p>
+  return (
+    <div className="flex flex-col gap-4">
+      {exceptions.length === 0 && (
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           No breaks. Add one for vacations or sick days: goals are reduced or excused, and you can still log
           progress.
         </p>
-        <Button onClick={() => openBreak({})}>New break</Button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
+      )}
       <BreakGroup title="Now" items={current} />
       <BreakGroup title="Upcoming" items={upcoming} />
       {past.length > 0 && (
@@ -72,11 +199,11 @@ function BreaksList() {
           {showPast && <BreakGroup items={past} />}
         </div>
       )}
-      <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 -mx-4 bg-background/95 px-4 py-2 backdrop-blur">
+      <BottomAction>
         <Button variant="outline" className="w-full" onClick={() => openBreak({})}>
           <PlusIcon /> New break
         </Button>
-      </div>
+      </BottomAction>
     </div>
   )
 }
@@ -89,49 +216,22 @@ function BreakGroup({ title, items }: { title?: string; items: TaskException[] }
     <div className="grid gap-2">
       {title && <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>}
       {items.map((e) => (
-        <button
+        <ListRow
           key={e.id}
-          type="button"
-          onClick={() => openBreak({ id: e.id })}
-          className="flex items-start gap-3 rounded-xl border bg-card p-3 text-left"
-        >
-          <TreePalmIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <div className="font-medium">
+          icon={<TreePalmIcon className="size-4" />}
+          title={
+            <>
               {breakDates(e)}
               {e.description && <span className="font-normal text-muted-foreground"> · {e.description}</span>}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {breakScopeNames(
-                e,
-                categories,
-                tasks.map((t) => t.task),
-              ).join(", ")}
-            </div>
-          </div>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function Automations() {
-  const planned = [
-    { icon: BellIcon, title: "Reminders", text: "Notify you at set times, per task or for a whole category." },
-    { icon: CalendarClockIcon, title: "Scheduled actions", text: "e.g. “6pm Saturday: send a weekly report” or export data." },
-    { icon: WebhookIcon, title: "Webhooks", text: "Record progress from other apps, or notify other services." },
-  ]
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-      <p>These need the sync server and are coming later.</p>
-      {planned.map(({ icon: Icon, title, text }) => (
-        <div key={title} className="flex gap-3">
-          <Icon className="mt-0.5 size-4 shrink-0" />
-          <div>
-            <div className="font-medium text-foreground">{title}</div>
-            <p>{text}</p>
-          </div>
-        </div>
+            </>
+          }
+          subtitle={breakScopeNames(
+            e,
+            categories,
+            tasks.map((t) => t.task),
+          ).join(", ")}
+          onClick={() => openBreak({ id: e.id })}
+        />
       ))}
     </div>
   )

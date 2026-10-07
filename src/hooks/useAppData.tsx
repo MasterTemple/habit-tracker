@@ -4,7 +4,17 @@ import { db } from "@/db/db"
 import { getSettings } from "@/db/repo"
 import { toLocalDate } from "@/domain/dates"
 import { currentTarget, exceptionsForTask, summarize, type TaskContext, type TaskSummary } from "@/domain/status"
-import type { Category, LocalDate, Settings, Task, TaskException, TaskTarget } from "@/domain/types"
+import type {
+  Automation,
+  Category,
+  Contact,
+  LocalDate,
+  Settings,
+  Share,
+  Task,
+  TaskException,
+  TaskTarget,
+} from "@/domain/types"
 
 export interface TaskView {
   task: Task
@@ -20,6 +30,9 @@ export interface AppData {
   tasks: TaskView[]
   categories: Category[]
   exceptions: TaskException[]
+  automations: Automation[]
+  contacts: Contact[]
+  shares: Share[]
 }
 
 /** The current local date, refreshed every minute so the UI rolls over at the day boundary. */
@@ -50,6 +63,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     categories: (await db.categories.orderBy("sortOrder").toArray()).filter((c) => !c.deletedAt),
     links: await db.taskCategories.toArray(),
     exceptions: (await db.exceptions.toArray()).filter((e) => !e.deletedAt),
+    automations: (await db.automations.toArray()).filter((a) => !a.deletedAt),
+    contacts: (await db.contacts.toArray()).filter((c) => !c.deletedAt).sort((a, b) => a.name.localeCompare(b.name)),
+    shares: (await db.shares.toArray()).filter((s) => !s.deletedAt),
   }))
 
   const today = useToday(raw?.settings.dayStartHour ?? 0)
@@ -74,7 +90,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         summary: summarize(ctx, today),
       }
     })
-    return { settings: raw.settings, today, tasks, categories: raw.categories, exceptions: raw.exceptions }
+    return {
+      settings: raw.settings,
+      today,
+      tasks,
+      categories: raw.categories,
+      exceptions: raw.exceptions,
+      automations: raw.automations,
+      contacts: raw.contacts,
+      shares: raw.shares,
+    }
   }, [raw, today])
 
   if (!value) return null

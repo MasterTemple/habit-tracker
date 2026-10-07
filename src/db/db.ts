@@ -1,6 +1,17 @@
 import { Dexie, type EntityTable, type Table } from "dexie"
 import { isExceptionV1, migrateExceptionV1 } from "./migrations"
-import type { Category, Settings, Task, TaskCategory, TaskEvent, TaskException, TaskTarget } from "@/domain/types"
+import type {
+  Automation,
+  Category,
+  Contact,
+  Settings,
+  Share,
+  Task,
+  TaskCategory,
+  TaskEvent,
+  TaskException,
+  TaskTarget,
+} from "@/domain/types"
 
 export interface SettingsRow extends Settings {
   key: "settings"
@@ -14,6 +25,9 @@ export class HabitDB extends Dexie {
   taskCategories!: Table<TaskCategory, [string, string]>
   exceptions!: EntityTable<TaskException, "id">
   settings!: EntityTable<SettingsRow, "key">
+  automations!: EntityTable<Automation, "id">
+  contacts!: EntityTable<Contact, "id">
+  shares!: EntityTable<Share, "id">
 
   constructor(name = "habit-tracker") {
     super(name)
@@ -45,6 +59,12 @@ export class HabitDB extends Dexie {
       await tx.table("categories").toCollection().modify((c) => {
         c.icon ??= ""
       })
+    })
+    // v4: reminders/actions/webhooks, friends, and sharing rules.
+    this.version(4).stores({
+      automations: "id, kind, updatedAt",
+      contacts: "id, updatedAt",
+      shares: "id, kind, updatedAt",
     })
   }
 }

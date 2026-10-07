@@ -1,15 +1,24 @@
-import { DownloadIcon, Share2Icon, UploadIcon } from "lucide-react"
+import { DownloadIcon, Share2Icon, Trash2Icon, UploadIcon } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/PageHeader"
 import { ShareSheet } from "@/components/ShareSheet"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { exportData, importData, importTemplate, isTemplate, updateSettings, type ExportData } from "@/db/repo"
+import {
+  exportData,
+  importData,
+  importTemplate,
+  isTemplate,
+  resetAll,
+  updateSettings,
+  type ExportData,
+} from "@/db/repo"
 import type { WeekStart } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { saveJson } from "@/lib/files"
@@ -26,6 +35,10 @@ export function SettingsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [sharing, setSharing] = useState(false)
+  const [erasing, setErasing] = useState(false)
+  const [eraseConfirmed, setEraseConfirmed] = useState(false)
+  // Remounts the form fields after an erase so they show the reset values.
+  const [resetKey, setResetKey] = useState(0)
   // A parsed full backup waiting for the user to pick replace or merge.
   const [pendingImport, setPendingImport] = useState<ExportData | null>(null)
 
@@ -60,8 +73,32 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div key={resetKey} className="flex flex-col gap-6">
       <PageHeader title="Settings" />
+
+      <Section title="Profile">
+        <p className="-mt-1 text-xs text-muted-foreground">
+          How friends will see you once accounts exist. Stored on this device for now.
+        </p>
+        <Row label="Display name">
+          <Input
+            className="w-44"
+            defaultValue={settings.displayName}
+            placeholder="Your name"
+            autoCapitalize="words"
+            onBlur={(e) => updateSettings({ displayName: e.target.value.trim() })}
+          />
+        </Row>
+        <Row label="Username">
+          <Input
+            className="w-44"
+            defaultValue={settings.username}
+            placeholder="username"
+            autoCapitalize="none"
+            onBlur={(e) => updateSettings({ username: e.target.value.trim().replace(/^@/, "") })}
+          />
+        </Row>
+      </Section>
 
       <Section title="General">
         <Row label="Week starts on">
@@ -157,7 +194,47 @@ export function SettingsPage() {
         </Button>
       </Section>
 
+      <Section title="Danger zone">
+        <Button variant="destructive" onClick={() => setErasing(true)}>
+          <Trash2Icon /> Erase all data…
+        </Button>
+      </Section>
+
       <ShareSheet open={sharing} onClose={() => setSharing(false)} />
+
+      <Dialog open={erasing} onOpenChange={setErasing}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Erase all data?</DialogTitle>
+            <DialogDescription>
+              Permanently deletes every task, entry, category, break, automation, friend, and setting on this device.
+              This can't be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Button variant="outline" onClick={doExport}>
+              <DownloadIcon /> Export a backup first
+            </Button>
+            <Label className="mt-2 flex items-center gap-2 font-normal">
+              <Checkbox checked={eraseConfirmed} onCheckedChange={(v) => setEraseConfirmed(v === true)} />
+              I understand this deletes everything
+            </Label>
+            <Button
+              variant="destructive"
+              disabled={!eraseConfirmed}
+              onClick={async () => {
+                await resetAll()
+                setErasing(false)
+                setEraseConfirmed(false)
+                setResetKey((k) => k + 1)
+                toast("All data erased")
+              }}
+            >
+              Erase everything
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!pendingImport} onOpenChange={(o) => !o && setPendingImport(null)}>
         <DialogContent className="max-w-sm">

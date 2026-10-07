@@ -1,33 +1,181 @@
-import { BellRingIcon, EyeIcon, UsersIcon } from "lucide-react"
+import { BellRingIcon, EyeIcon, LinkIcon, MessageCircleIcon, PlusIcon, SearchIcon } from "lucide-react"
+import { useState } from "react"
+import { ContactEditor, type ContactTarget } from "@/components/ContactEditor"
+import { BottomAction, ListRow, PinnedTabs, ServerNote } from "@/components/layout"
+import { ShareEditor, type ShareTarget } from "@/components/ShareEditor"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
+import { saveShare } from "@/db/repo"
+import type { Share } from "@/domain/types"
+import { useAppData } from "@/hooks/useAppData"
+import { useViewTab } from "@/hooks/useNav"
+import { contactLinks, initials } from "@/lib/contacts"
+import { EVENT_OPTIONS, RELATIONSHIPS } from "@/lib/labels"
+import { scopeSummary } from "@/lib/scope"
+
+const TABS = [
+  { value: "friends", label: "Friends" },
+  { value: "sharing", label: "Sharing" },
+  { value: "accountability", label: "Accountability" },
+]
 
 export function SocialPage() {
+  const [tab, setTab] = useViewTab("social")
+  const [contact, setContact] = useState<ContactTarget | null>(null)
+  const [share, setShare] = useState<ShareTarget | null>(null)
+
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Social</h1>
-      <div className="flex flex-col gap-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-        <p>Coming once there’s a sync server. Planned:</p>
-        <Feature icon={UsersIcon} title="Friends">
-          Find and add people, set your relationship, and open Telegram, Signal, Discord, or Messages to contact them.
-        </Feature>
-        <Feature icon={EyeIcon} title="Sharing">
-          Let chosen people view specific tasks or whole categories.
-        </Feature>
-        <Feature icon={BellRingIcon} title="Accountability">
-          Notify chosen people when a task is completed, failed, or a deadline is missed.
-        </Feature>
+    <Tabs value={tab} onValueChange={setTab}>
+      <PinnedTabs tabs={TABS} />
+      <TabsContent value="friends">
+        <FriendsList onEdit={setContact} />
+      </TabsContent>
+      <TabsContent value="sharing">
+        <ShareList
+          kind="view"
+          note="Share rules are saved here. Links and your friends' view of your progress need accounts and the sync server."
+          empty="Nothing shared. Share some tasks or categories with friends, or with anyone who has the link."
+          onEdit={setShare}
+        />
+      </TabsContent>
+      <TabsContent value="accountability">
+        <ShareList
+          kind="notify"
+          note="Alerts are saved here and start sending once the sync server exists."
+          empty="No alerts. Tell someone when you make progress, finish a goal, or miss one."
+          onEdit={setShare}
+        />
+      </TabsContent>
+      <ContactEditor target={contact} onClose={() => setContact(null)} />
+      <ShareEditor target={share} onClose={() => setShare(null)} />
+    </Tabs>
+  )
+}
+
+function FriendsList({ onEdit }: { onEdit: (target: ContactTarget) => void }) {
+  const { contacts } = useAppData()
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input disabled className="pl-8" placeholder="Find people by username (needs accounts)" />
       </div>
+      <ServerNote>
+        Accounts, finding people, and seeing their stats need the sync server. For now, keep the people you share with
+        here and message them in the apps you already use.
+      </ServerNote>
+      {contacts.length === 0 && (
+        <p className="mt-6 text-center text-sm text-muted-foreground">No friends yet.</p>
+      )}
+      {contacts.map((c) => {
+        const links = contactLinks(c)
+        return (
+          <ListRow
+            key={c.id}
+            icon={
+              <span className="flex size-9 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+                {initials(c.name)}
+              </span>
+            }
+            title={c.name}
+            subtitle={RELATIONSHIPS.find((r) => r.value === c.relationship)?.label}
+            onClick={() => onEdit(c.id)}
+            trailing={
+              links.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon-lg" aria-label={`Message ${c.name}`}>
+                      <MessageCircleIcon />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {links.map((l) => (
+                      <DropdownMenuItem key={l.label} asChild>
+                        <a href={l.href} target="_blank" rel="noreferrer">
+                          {l.label}
+                        </a>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            }
+          />
+        )
+      })}
+      <BottomAction>
+        <Button variant="outline" className="w-full" onClick={() => onEdit("new")}>
+          <PlusIcon /> New friend
+        </Button>
+      </BottomAction>
     </div>
   )
 }
 
-function Feature({ icon: Icon, title, children }: { icon: typeof UsersIcon; title: string; children: React.ReactNode }) {
+function ShareList({
+  kind,
+  note,
+  empty,
+  onEdit,
+}: {
+  kind: Share["kind"]
+  note: string
+  empty: string
+  onEdit: (target: ShareTarget) => void
+}) {
+  const { shares, contacts, categories, tasks } = useAppData()
+  const items = shares.filter((s) => s.kind === kind)
+
+  const audience = (s: Share) => {
+    const parts = s.contactIds.map((id) => contacts.find((c) => c.id === id)?.name).filter(Boolean) as string[]
+    if (s.kind === "view" && s.anyoneWithLink) parts.push("anyone with the link")
+    if (s.webhookUrl) parts.push("webhook")
+    return parts.join(", ") || "no one yet"
+  }
+
+  const subtitle = (s: Share) => {
+    const what = scopeSummary(s.scope, categories, tasks)
+    if (s.kind === "view") return `${what} · visible to ${audience(s)}`
+    const when = s.events.map((e) => EVENT_OPTIONS.find((o) => o.value === e)?.label.toLowerCase()).join(", ")
+    return `${what} · tell ${audience(s)} when: ${when}`
+  }
+
+  const Icon = kind === "view" ? EyeIcon : BellRingIcon
+
   return (
-    <div className="flex gap-3">
-      <Icon className="mt-0.5 size-4 shrink-0" />
-      <div>
-        <div className="font-medium text-foreground">{title}</div>
-        <p>{children}</p>
-      </div>
+    <div className="flex flex-col gap-3">
+      <ServerNote>{note}</ServerNote>
+      {items.length === 0 && <p className="mt-6 text-center text-sm text-muted-foreground">{empty}</p>}
+      {items.map((s) => (
+        <ListRow
+          key={s.id}
+          icon={s.kind === "view" && s.anyoneWithLink ? <LinkIcon className="size-4" /> : <Icon className="size-4" />}
+          title={s.name || scopeSummary(s.scope, categories, tasks)}
+          subtitle={subtitle(s)}
+          muted={!s.enabled}
+          onClick={() => onEdit({ id: s.id })}
+          trailing={
+            <Switch
+              checked={s.enabled}
+              onCheckedChange={(enabled) => saveShare({ ...s, enabled })}
+              aria-label={`Turn ${s.name || "rule"} ${s.enabled ? "off" : "on"}`}
+            />
+          }
+        />
+      ))}
+      <BottomAction>
+        <Button variant="outline" className="w-full" onClick={() => onEdit({ kind })}>
+          <PlusIcon /> {kind === "view" ? "Share tasks" : "New alert"}
+        </Button>
+      </BottomAction>
     </div>
   )
 }

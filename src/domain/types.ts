@@ -108,6 +108,9 @@ export interface Settings {
   limitDisplay: "used" | "remaining"
   /** Name of the filter for tasks without a category. */
   uncategorizedName: string
+  /** Shown to friends once accounts exist. */
+  displayName: string
+  username: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -116,4 +119,122 @@ export const DEFAULT_SETTINGS: Settings = {
   carryOverDefault: false,
   limitDisplay: "used",
   uncategorizedName: "Other",
+  displayName: "",
+  username: "",
 }
+
+// ---------- automations, friends, sharing ----------
+// Configured and stored locally now; delivery (notifications, emails, links) needs the sync server.
+
+/** Which tasks something applies to: everything, or any mix of tasks and categories. */
+export interface Scope {
+  appliesToAll: boolean
+  taskIds: string[]
+  categoryIds: string[]
+}
+
+export interface Schedule {
+  repeat: "daily" | "weekly" | "monthly"
+  /** "HH:MM", 24-hour, local time. */
+  time: string
+  /** For weekly: 0 = Sunday … 6 = Saturday. */
+  weekdays: number[]
+  /** For monthly: 1–31 (clamped to the month's last day). */
+  monthDay: number
+}
+
+export type Channel = "push" | "email" | "sms"
+
+interface Row {
+  id: string
+  name: string
+  enabled: boolean
+  updatedAt: Timestamp
+  deletedAt: Timestamp | null
+}
+
+export interface Reminder extends Row {
+  kind: "reminder"
+  scope: Scope
+  schedule: Schedule
+  message: string
+  /** Skip the reminder when every task in scope is already done for its period. */
+  onlyIfIncomplete: boolean
+  channels: Channel[]
+}
+
+export interface ScheduledAction extends Row {
+  kind: "report" | "export"
+  scope: Scope
+  schedule: Schedule
+  /** For reports: the period the report covers. */
+  period: Period
+  contactIds: string[]
+  emails: string[]
+}
+
+/** Records progress when opened (works now, via a link) or called (needs the server). */
+export interface IncomingWebhook extends Row {
+  kind: "webhook_in"
+  taskId: string
+  amount: number
+  /** Random, unguessable part of the server URL. */
+  token: string
+}
+
+/** "entry" = progress was recorded (any entry on the task). */
+export type TaskEventKind = "entry" | "completed" | "failed" | "deadline_missed" | "streak_broken"
+
+/** Posts to a URL when something happens. */
+export interface OutgoingWebhook extends Row {
+  kind: "webhook_out"
+  scope: Scope
+  url: string
+  events: TaskEventKind[]
+}
+
+export type Automation = Reminder | ScheduledAction | IncomingWebhook | OutgoingWebhook
+
+export type Relationship = "friend" | "family" | "partner" | "coach" | "other"
+
+export interface Contact {
+  id: string
+  name: string
+  relationship: Relationship
+  /** Their username here, once accounts exist. */
+  username: string
+  phone: string
+  email: string
+  telegram: string
+  /** Signal phone number or username. */
+  signal: string
+  /** Discord user ID (numeric), needed to open a DM. */
+  discordId: string
+  notes: string
+  updatedAt: Timestamp
+  deletedAt: Timestamp | null
+}
+
+/** Lets people see progress on the tasks in scope. */
+export interface ShareRule extends Row {
+  kind: "view"
+  scope: Scope
+  contactIds: string[]
+  /** Unlisted: anyone with the link can view. */
+  anyoneWithLink: boolean
+  /** Random part of the share link. */
+  token: string
+  webhookUrl: string
+}
+
+/** Tells people when things happen to the tasks in scope. */
+export interface NotifyRule extends Row {
+  kind: "notify"
+  scope: Scope
+  contactIds: string[]
+  events: TaskEventKind[]
+  channels: Channel[]
+  webhookUrl: string
+}
+
+export type Share = ShareRule | NotifyRule

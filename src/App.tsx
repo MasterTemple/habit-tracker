@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { AppDataProvider } from "@/hooks/useAppData"
 import { EditorsProvider } from "@/hooks/useEditors"
 import { NavProvider, useNav, type PageId } from "@/hooks/useNav"
+import { useShortcutLinks } from "@/hooks/useShortcutLinks"
 import { useSwipe } from "@/hooks/useSwipe"
 import { cn } from "@/lib/utils"
 import { SchedulePage } from "@/pages/SchedulePage"
@@ -36,6 +37,7 @@ function Shell() {
   const Page = PAGES.find((p) => p.id === page)!.component
   const main = useRef<HTMLElement>(null)
   useSwipe(main, step)
+  useShortcutLinks()
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-background">

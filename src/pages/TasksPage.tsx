@@ -1,50 +1,68 @@
-import { ChevronDownIcon, PlusIcon, SparklesIcon } from "lucide-react"
+import { PlusIcon, SparklesIcon } from "lucide-react"
 import { useState } from "react"
 import { AmountDialog } from "@/components/AmountDialog"
 import { CategoriesList } from "@/components/CategoriesList"
 import { CategoryChip } from "@/components/CategoryChip"
 import { DailyOverview } from "@/components/DailyOverview"
+import { PinnedTabs } from "@/components/layout"
 import { ScrollRow } from "@/components/ScrollRow"
 import { SortableList, useDragHandle } from "@/components/Sortable"
 import { TaskCard } from "@/components/TaskCard"
 import { TaskDetail } from "@/components/TaskDetail"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { reorderTask } from "@/db/repo"
 import { seedExamples } from "@/db/seed"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
 import { useNav, useViewTab } from "@/hooks/useNav"
-import { UNCATEGORIZED } from "@/lib/filters"
+import { ON_BREAK, RETIRED, UNCATEGORIZED, visibleTasks, type Visibility } from "@/lib/filters"
 import { cn } from "@/lib/utils"
 
-export function TasksPage() {
-  const { tasks } = useAppData()
-  const [tab, setTab] = useViewTab("tasks")
-  // Selected category ids (or UNCATEGORIZED); a task shows if it matches any. Empty = all.
-  const [filter, setFilter] = useState<string[]>([])
+const SHOW_KEY = "task-list-show"
 
-  const visible = tasks.filter(
-    (t) =>
-      filter.length === 0 ||
-      filter.some((f) => (f === UNCATEGORIZED ? t.categories.length === 0 : t.categories.some((c) => c.id === f))),
-  )
+// Which hidden kinds to show is a per-device preference, so browser storage is fine (and may be unavailable).
+function loadShow(): Visibility {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SHOW_KEY) ?? "{}")
+    return { retired: saved.retired === true, breaks: saved.breaks === true }
+  } catch {
+    return { retired: false, breaks: false }
+  }
+}
+
+export function TasksPage() {
+  const { tasks, today } = useAppData()
+  const [tab, setTab] = useViewTab("tasks")
+  // Selected category ids or pseudo-categories; a task shows if it matches any. Empty = all.
+  const [filter, setFilter] = useState<string[]>([])
+  const [show, setShowState] = useState(loadShow)
+
+  const setShow = (changes: Partial<Visibility>) => {
+    const next = { ...show, ...changes }
+    setShowState(next)
+    // Hiding a kind also drops its chip from the filter.
+    setFilter((f) => f.filter((v) => (v !== RETIRED || next.retired) && (v !== ON_BREAK || next.breaks)))
+    try {
+      localStorage.setItem(SHOW_KEY, JSON.stringify(next))
+    } catch {
+      // ignore
+    }
+  }
+
+  const visible = visibleTasks(tasks, filter, show, today)
   const active = visible.filter((t) => !t.task.retiredAt)
   const retired = visible.filter((t) => t.task.retiredAt)
+  // Progress always counts tasks on break (as "on break"), even when they're hidden from the list.
+  const overviewTasks = visibleTasks(tasks, filter, { retired: false, breaks: true }, today)
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
-      {/* Pinned while the list scrolls. The negative margin cancels the page's top inset so that,
-          once stuck, the header's own padding keeps it clear of the status bar. */}
-      <div className="sticky top-0 z-30 -mx-4 -mt-[calc(0.5rem+env(safe-area-inset-top))] flex flex-col gap-3 bg-background px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-3">
-        <TabsList className="w-full">
-          <TabsTrigger value="tasks">Tasks</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-        </TabsList>
-        {tab === "tasks" && <DailyOverview tasks={active} filter={filter} />}
-      </div>
+      <PinnedTabs tabs={TABS}>{tab === "tasks" && <DailyOverview tasks={overviewTasks} filter={filter} />}</PinnedTabs>
       <TabsContent value="tasks">
-        <TaskList active={active} retired={retired} filter={filter} setFilter={setFilter} />
+        <TaskList active={active} retired={retired} filter={filter} setFilter={setFilter} show={show} setShow={setShow} />
       </TabsContent>
       <TabsContent value="categories">
         <CategoriesList
@@ -58,23 +76,36 @@ export function TasksPage() {
   )
 }
 
+const TABS = [
+  { value: "tasks", label: "Tasks" },
+  { value: "categories", label: "Categories" },
+]
+
 interface TaskListProps {
   active: TaskView[]
   retired: TaskView[]
   filter: string[]
   setFilter: (filter: string[]) => void
+  show: Visibility
+  setShow: (changes: Partial<Visibility>) => void
 }
 
-function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
+function TaskList({ active, retired, filter, setFilter, show, setShow }: TaskListProps) {
   const { tasks, categories, today, settings } = useAppData()
   const { openTask, openBreak } = useEditors()
   const { setPage, setTab } = useNav()
-  const [showRetired, setShowRetired] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [amountId, setAmountId] = useState<string | null>(null)
   const find = (id: string | null) => tasks.find((t) => t.task.id === id) ?? null
   const toggle = (id: string) => setFilter(filter.includes(id) ? filter.filter((f) => f !== id) : [...filter, id])
   const hasUncategorized = tasks.some((t) => !t.task.retiredAt && t.categories.length === 0)
+
+  // Pseudo-categories, shown after the real ones when there's something to filter.
+  const pseudo = [
+    { value: UNCATEGORIZED, label: settings.uncategorizedName || "Other", visible: hasUncategorized },
+    { value: RETIRED, label: "Retired", visible: show.retired },
+    { value: ON_BREAK, label: "On break", visible: show.breaks },
+  ].filter((p) => p.visible || filter.includes(p.value))
 
   const cardProps = (view: TaskView) => ({
     view,
@@ -85,7 +116,18 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      {categories.length > 0 && (
+      <div className="flex gap-6">
+        <Label className="flex items-center gap-2 font-normal">
+          <Checkbox checked={show.retired} onCheckedChange={(v) => setShow({ retired: v === true })} />
+          Show retired
+        </Label>
+        <Label className="flex items-center gap-2 font-normal">
+          <Checkbox checked={show.breaks} onCheckedChange={(v) => setShow({ breaks: v === true })} />
+          Show breaks
+        </Label>
+      </div>
+
+      {(categories.length > 0 || pseudo.length > 0) && (
         <ScrollRow className="gap-1.5 py-0.5">
           <button
             type="button"
@@ -106,20 +148,21 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
               onClick={() => toggle(c.id)}
             />
           ))}
-          {(hasUncategorized || filter.includes(UNCATEGORIZED)) && (
+          {pseudo.map((p) => (
             <button
+              key={p.value}
               type="button"
-              onClick={() => toggle(UNCATEGORIZED)}
-              aria-pressed={filter.includes(UNCATEGORIZED)}
+              onClick={() => toggle(p.value)}
+              aria-pressed={filter.includes(p.value)}
               className={cn(
                 "rounded-full border border-dashed px-2.5 py-1 text-xs font-medium whitespace-nowrap",
-                filter.includes(UNCATEGORIZED) ? "border-foreground bg-muted text-foreground" : "text-muted-foreground",
-                filter.length > 0 && !filter.includes(UNCATEGORIZED) && "opacity-50",
+                filter.includes(p.value) ? "border-foreground bg-muted text-foreground" : "text-muted-foreground",
+                filter.length > 0 && !filter.includes(p.value) && "opacity-50",
               )}
             >
-              {settings.uncategorizedName || "Other"}
+              {p.label}
             </button>
-          )}
+          ))}
         </ScrollRow>
       )}
 
@@ -143,18 +186,13 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
         ))}
       </SortableList>
 
-      {retired.length > 0 && (
-        <>
-          <button
-            type="button"
-            className="mt-2 flex items-center gap-1 text-sm text-muted-foreground"
-            onClick={() => setShowRetired((v) => !v)}
-          >
-            <ChevronDownIcon className={cn("size-4 transition-transform", showRetired && "rotate-180")} />
-            Retired ({retired.length})
-          </button>
-          {showRetired && retired.map((view) => <TaskCard key={view.task.id} {...cardProps(view)} />)}
-        </>
+      {/* Retired tasks (when shown) come last and keep their own order. */}
+      {retired.map((view) => (
+        <TaskCard key={view.task.id} {...cardProps(view)} />
+      ))}
+
+      {tasks.length > 0 && active.length + retired.length === 0 && (
+        <p className="mt-6 text-center text-sm text-muted-foreground">No tasks match.</p>
       )}
 
       <TaskDetail

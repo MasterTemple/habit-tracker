@@ -7,7 +7,15 @@ import {
   createTask,
   deleteCategory,
   createException,
+  deleteContact,
   deleteEvent,
+  deleteTask,
+  getSettings,
+  resetAll,
+  saveAutomation,
+  saveContact,
+  saveShare,
+  updateSettings,
   duplicateTask,
   exportData,
   exportTemplate,
@@ -226,5 +234,56 @@ describe("repo", () => {
     expect(copy.unit).toBe("rep")
     expect((await taskToInput(copy.id)).categoryIds).toEqual([cat])
     expect(await db.events.where("taskId").equals(copy.id).count()).toBe(0)
+  })
+
+  it("deletes a task with its entries and removes it from breaks and shares", async () => {
+    const id = await createTask(input)
+    const keep = await createTask({ ...input, name: "Keep" })
+    await recordEvent(id, 5)
+    await recordEvent(keep, 5)
+    const breakId = await createException({
+      appliesToAll: false, taskIds: [id, keep], categoryIds: [], startDate: "2026-10-01", endDate: "2026-10-02", description: "",
+    })
+    const scope = { appliesToAll: false, taskIds: [id], categoryIds: [] }
+    const shareId = await saveShare({ kind: "view", name: "", enabled: true, scope, contactIds: [], anyoneWithLink: true, token: "x", webhookUrl: "" })
+    const hookId = await saveAutomation({ kind: "webhook_in", name: "", enabled: true, taskId: id, amount: 1, token: "y" })
+
+    await deleteTask(id)
+    expect(await db.tasks.get(id)).toBeUndefined()
+    expect(await db.events.count()).toBe(1)
+    expect(await db.targets.where("taskId").equals(id).count()).toBe(0)
+    expect((await db.exceptions.get(breakId))?.taskIds).toEqual([keep])
+    expect(((await db.shares.get(shareId)) as { scope: { taskIds: string[] } }).scope.taskIds).toEqual([])
+    expect((await db.automations.get(hookId))?.deletedAt).not.toBeNull()
+  })
+
+  it("removes a deleted contact from shares", async () => {
+    const a = await saveContact({ name: "A", relationship: "friend", username: "", phone: "", email: "", telegram: "", signal: "", discordId: "", notes: "" })
+    const shareId = await saveShare({
+      kind: "notify", name: "", enabled: true, scope: { appliesToAll: true, taskIds: [], categoryIds: [] },
+      contactIds: [a], events: ["entry"], channels: ["push"], webhookUrl: "",
+    })
+    await deleteContact(a)
+    expect((await db.contacts.get(a))?.deletedAt).not.toBeNull()
+    expect(((await db.shares.get(shareId)) as { contactIds: string[] }).contactIds).toEqual([])
+  })
+
+  it("erases everything", async () => {
+    await createTask(input)
+    await updateSettings({ weekStartsOn: 1 })
+    await resetAll()
+    expect(await db.tasks.count()).toBe(0)
+    expect((await getSettings()).weekStartsOn).toBe(0)
+  })
+
+  it("exports and imports automations, contacts, and shares", async () => {
+    await saveContact({ name: "A", relationship: "friend", username: "", phone: "", email: "", telegram: "", signal: "", discordId: "", notes: "" })
+    const data = JSON.parse(JSON.stringify(await exportData()))
+    await resetAll()
+    await importData(data)
+    expect(await db.contacts.count()).toBe(1)
+    // A v3 file without the new tables still imports.
+    await importData({ ...data, version: 3, automations: undefined, contacts: undefined, shares: undefined })
+    expect(await db.contacts.count()).toBe(0)
   })
 })

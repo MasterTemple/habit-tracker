@@ -14,6 +14,7 @@ import type { Category } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
 import { cn } from "@/lib/utils"
+import { BottomAction } from "./layout"
 import { SortableList, useDragHandle } from "./Sortable"
 import { TaskIcon } from "./TaskIcon"
 
@@ -36,12 +37,11 @@ export function CategoriesList({ onShowTasks }: { onShowTasks: (categoryId: stri
           </SortableList>
         </div>
       )}
-      {/* Stays just above the bottom nav when the list is long, so it never needs scrolling to. */}
-      <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 -mx-4 bg-background/95 px-4 py-2 backdrop-blur">
+      <BottomAction>
         <Button variant="outline" className="w-full" onClick={() => openCategory("new")}>
           <PlusIcon /> New category
         </Button>
-      </div>
+      </BottomAction>
     </div>
   )
 }

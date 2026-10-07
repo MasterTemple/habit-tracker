@@ -5,15 +5,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Switch } from "@/components/ui/switch"
 import { endOfDuration, type DurationUnit } from "@/domain/dates"
 import { createException, deleteException, updateException, type ExceptionInput } from "@/db/repo"
 import { useAppData } from "@/hooks/useAppData"
 import { BOTTOM_SHEET } from "@/lib/viewport"
-import { cn } from "@/lib/utils"
-import { CategoryChip } from "./CategoryChip"
 import { NumberInput } from "./NumberInput"
-import { TaskIcon } from "./TaskIcon"
+import { isEmptyScope, ScopePicker } from "./pickers"
 
 export type BreakTarget = { id: string } | { preset?: Partial<ExceptionInput> }
 
@@ -26,10 +23,8 @@ interface Props {
  * Create or edit a break. During a break, goals are reduced (or excused for fully
  * covered periods) and limits ignore entries, but progress can still be recorded.
  */
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
-
 export function BreakEditor({ target, onClose }: Props) {
-  const { today, categories, tasks, exceptions } = useAppData()
+  const { today, exceptions } = useAppData()
   const [input, setInput] = useState<ExceptionInput | null>(null)
   const [length, setLengthState] = useState<{ count: number | null; unit: DurationUnit }>({ count: null, unit: "day" })
 
@@ -61,10 +56,7 @@ export function BreakEditor({ target, onClose }: Props) {
   }, [target])
 
   const set = (changes: Partial<ExceptionInput>) => setInput((prev) => (prev ? { ...prev, ...changes } : prev))
-  const toggle = (key: "taskIds" | "categoryIds", id: string) =>
-    input && set({ [key]: input[key].includes(id) ? input[key].filter((x) => x !== id) : [...input[key], id] })
-
-  const empty = input && !input.appliesToAll && input.taskIds.length === 0 && input.categoryIds.length === 0
+  const empty = input && isEmptyScope(input)
 
   const save = async () => {
     if (!input || empty) return
@@ -80,9 +72,6 @@ export function BreakEditor({ target, onClose }: Props) {
     toast("Break deleted")
     onClose()
   }
-
-  // Keep tasks already on this break visible even if they've since been retired.
-  const pickableTasks = tasks.filter((t) => !t.task.retiredAt || input?.taskIds.includes(t.task.id))
 
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
@@ -168,59 +157,11 @@ export function BreakEditor({ target, onClose }: Props) {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <Label htmlFor="break-all">All tasks</Label>
-              <Switch id="break-all" checked={input.appliesToAll} onCheckedChange={(v) => set({ appliesToAll: v })} />
-            </div>
-
-            {!input.appliesToAll && (
-              <>
-                {categories.length > 0 && (
-                  <div className="grid gap-1.5">
-                    <Label>Categories</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {categories.map((c) => (
-                        <CategoryChip
-                          key={c.id}
-                          category={c}
-                          size="md"
-                          selected={input.categoryIds.includes(c.id)}
-                          onClick={() => toggle("categoryIds", c.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="grid gap-1.5">
-                  <Label>Tasks</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {pickableTasks.map(({ task }) => {
-                      const selected = input.taskIds.includes(task.id)
-                      return (
-                        <button
-                          key={task.id}
-                          type="button"
-                          onClick={() => toggle("taskIds", task.id)}
-                          aria-pressed={selected}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium",
-                            selected ? "border-foreground bg-muted" : "text-muted-foreground",
-                          )}
-                        >
-                          <TaskIcon name={task.icon} className="size-3.5" style={{ color: task.color }} />
-                          {task.name}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-                {/* Always shown (not just when empty) so the layout doesn't shift on the first pick. */}
-                <p className={cn("text-xs", empty ? "text-muted-foreground" : "text-foreground")}>
-                  {plural(input.categoryIds.length, "category", "categories")} and{" "}
-                  {plural(input.taskIds.length, "task", "tasks")} selected
-                </p>
-              </>
-            )}
+            <ScopePicker
+              id="break"
+              value={input}
+              onChange={(scope) => set({ appliesToAll: scope.appliesToAll, taskIds: scope.taskIds, categoryIds: scope.categoryIds })}
+            />
 
             <Button size="lg" className="h-11" onClick={save} disabled={!!empty}>
               {editingId ? "Save" : "Add break"}

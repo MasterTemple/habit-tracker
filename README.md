@@ -34,7 +34,8 @@ src/db/         Dexie schema (db.ts) and the only place that writes data (repo.t
 src/hooks/      useAppData: live-loads everything and derives per-task summaries.
                 useEditors: hosts the task/category/break editors so any page or the + menu can open them.
 src/components/ Task card, editors, history sheet, dialogs.
-src/pages/      Tasks (Tasks | Categories), Schedule (Breaks | Automations), Social (placeholder), Settings.
+src/pages/      Tasks (Tasks | Categories), Schedule (Breaks | Reminders | Actions | Webhooks),
+                Social (Friends | Sharing | Accountability), Settings.
 ```
 
 ## Data model
@@ -69,5 +70,19 @@ Progress is never stored; it's derived from append-only **events** (`+10 at 09:0
 - **Undo:** the card's undo button deletes the newest entry in the current period, whichever button made it
   (with Redo in the toast). Corrections that should stay in the history go through *Custom amount*.
 - **Streaks:** consecutive successful periods; the current open period and excused periods don't break it.
+
+### Server-dependent features (configured now, delivered later)
+
+Reminders, scheduled reports/backups, webhooks, sharing, and accountability alerts are stored locally
+(`automations`, `contacts`, `shares` tables) so they can be set up now; a sync server will deliver them.
+What already works without one:
+
+- **Shortcut links** for incoming webhooks: opening `…/?hook=<token>` records the webhook's amount on its task
+  (e.g. from an iOS Shortcuts automation).
+- **Messaging friends**: Messages, Call, Email, Telegram, Signal, and Discord links from their details.
+- Progress alerts must wait a minute so undone entries aren't reported: `progressReadyToAlert` in
+  `src/domain/notify.ts`, for the server to use.
+
+Deleting a task is a hard delete (it will need a tombstone once sync exists).
 
 All rows use UUIDv7 ids, `updatedAt`, and soft deletes so sync can be added later.
