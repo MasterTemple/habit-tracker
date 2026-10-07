@@ -7,13 +7,13 @@ import {
   type Category,
   type DisplayMode,
   type Period,
-  type ScopeType,
   type Settings,
   type TaskException,
   type TaskTarget,
   type TaskType,
 } from "@/domain/types"
 import { db } from "./db"
+import { isExceptionV1, migrateExceptionV1 } from "./migrations"
 
 const now = () => new Date().toISOString()
 
@@ -182,6 +182,12 @@ export async function copyAndRetire(id: string, input: TaskInput): Promise<strin
   })
 }
 
+/** Creates a copy of a task (linked by createdFromId), leaving the original as it is, retired or not. */
+export async function duplicateTask(id: string, input: TaskInput): Promise<string> {
+  if (!(await db.tasks.get(id))) throw new Error(`Task ${id} not found`)
+  return createTask(input, id)
+}
+
 export async function moveTask(id: string, direction: -1 | 1) {
   const tasks = (await db.tasks.orderBy("sortOrder").toArray()).filter((t) => !t.retiredAt)
   const index = tasks.findIndex((t) => t.id === id)
@@ -211,6 +217,30 @@ export async function recordEvent(taskId: string, amount: number, note = ""): Pr
     deletedAt: null,
   })
   return id
+}
+
+/** How long after an entry an opposite button press removes it instead of adding a correction. */
+export const UNDO_WINDOW_MS = 60_000
+
+/**
+ * Used by the card buttons. If the newest entry for the task was made within the
+ * undo window and this press exactly reverses it, the entry is deleted instead of
+ * recording a correction, so a quick "oops" leaves no trace in the history.
+ */
+export async function recordOrUndo(taskId: string, amount: number, now = Date.now()): Promise<"recorded" | "undone"> {
+  const cutoff = new Date(now - UNDO_WINDOW_MS).toISOString()
+  const recent = await db.events
+    .where("taskId")
+    .equals(taskId)
+    .filter((e) => !e.deletedAt && e.createdAt >= cutoff)
+    .toArray()
+  const latest = recent.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+  if (latest && latest.amount === -amount) {
+    await deleteEvent(latest.id)
+    return "undone"
+  }
+  await recordEvent(taskId, amount)
+  return "recorded"
 }
 
 export async function deleteEvent(id: string) {
@@ -253,33 +283,41 @@ export async function moveCategory(id: string, direction: -1 | 1) {
 }
 
 export async function deleteCategory(id: string) {
-  await db.transaction("rw", [db.categories, db.taskCategories], async () => {
+  await db.transaction("rw", [db.categories, db.taskCategories, db.exceptions], async () => {
     await db.categories.update(id, { deletedAt: now(), updatedAt: now() })
     await db.taskCategories.where("categoryId").equals(id).delete()
+    await db.exceptions
+      .where("categoryIds")
+      .equals(id)
+      .modify((e) => {
+        e.categoryIds = e.categoryIds.filter((c) => c !== id)
+        e.updatedAt = now()
+      })
   })
 }
 
 // ---------- exceptions ----------
 
-export interface ExceptionInput {
-  scopeType: ScopeType
-  scopeId: string | null
-  startDate: string
-  endDate: string
-  description: string
+export type ExceptionInput = Pick<
+  TaskException,
+  "appliesToAll" | "taskIds" | "categoryIds" | "startDate" | "endDate" | "description"
+>
+
+function normalizeException(input: ExceptionInput): ExceptionInput {
+  const endDate = input.endDate < input.startDate ? input.startDate : input.endDate
+  return input.appliesToAll
+    ? { ...input, endDate, taskIds: [], categoryIds: [] }
+    : { ...input, endDate, taskIds: [...new Set(input.taskIds)], categoryIds: [...new Set(input.categoryIds)] }
 }
 
 export async function createException(input: ExceptionInput): Promise<string> {
   const id = uuid()
-  const exception: TaskException = {
-    id,
-    ...input,
-    scopeId: input.scopeType === "all" ? null : input.scopeId,
-    updatedAt: now(),
-    deletedAt: null,
-  }
-  await db.exceptions.add(exception)
+  await db.exceptions.add({ id, ...normalizeException(input), updatedAt: now(), deletedAt: null })
   return id
+}
+
+export async function updateException(id: string, input: ExceptionInput) {
+  await db.exceptions.update(id, { ...normalizeException(input), updatedAt: now() })
 }
 
 export async function deleteException(id: string) {
@@ -288,7 +326,7 @@ export async function deleteException(id: string) {
 
 // ---------- export / import ----------
 
-export const EXPORT_VERSION = 1
+export const EXPORT_VERSION = 2
 
 export async function exportData() {
   return {
@@ -309,9 +347,10 @@ export type ExportData = Awaited<ReturnType<typeof exportData>>
 
 /** Replaces all local data with an export. */
 export async function importData(data: ExportData) {
-  if (data?.app !== "habit-tracker" || data.version !== EXPORT_VERSION) {
+  if (data?.app !== "habit-tracker" || ![1, EXPORT_VERSION].includes(data.version)) {
     throw new Error("Not a habit-tracker export, or from an unsupported version")
   }
+  const exceptions = data.exceptions.map((e) => (isExceptionV1(e) ? migrateExceptionV1(e) : e))
   await db.transaction("rw", db.tables, async () => {
     await Promise.all(db.tables.map((t) => t.clear()))
     await db.settings.put({ ...DEFAULT_SETTINGS, ...data.settings, key: "settings" })
@@ -320,6 +359,6 @@ export async function importData(data: ExportData) {
     await db.events.bulkAdd(data.events)
     await db.categories.bulkAdd(data.categories)
     await db.taskCategories.bulkAdd(data.taskCategories)
-    await db.exceptions.bulkAdd(data.exceptions)
+    await db.exceptions.bulkAdd(exceptions)
   })
 }

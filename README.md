@@ -23,20 +23,22 @@ src/domain/     Pure TS: types, periods, progress/streak/carry-over rules. No Re
                 so a future sync server can run the same logic.
 src/db/         Dexie schema (db.ts) and the only place that writes data (repo.ts).
 src/hooks/      useAppData: live-loads everything and derives per-task summaries.
-src/components/ Task card, editor, history sheet, dialogs.
-src/pages/      Tasks, Social (placeholder), Settings.
+                useEditors: hosts the task/category/break editors so any page or the + menu can open them.
+src/components/ Task card, editors, history sheet, dialogs.
+src/pages/      Tasks (Tasks | Categories), Schedule (Breaks | Automations), Social (placeholder), Settings.
 ```
 
 ## Data model
 
 Progress is never stored; it's derived from append-only **events** (`+10 at 09:01`).
 
-- **tasks**: what the task is. Type (`accumulate` / `limit` / `track`) is immutable; use *Copy & retire*.
+- **tasks**: what the task is. Type (`accumulate` / `limit` / `track`) is immutable; use *Duplicate* or
+  *Copy & retire* (both link the copy via `createdFromId`).
 - **targets**: versioned goals (`period`, `amount`, `carryOver`, `effectiveFrom`). The version in effect at a
   period's start governs that period. Editing a goal creates a version starting at the current period.
 - **events**: amounts (negative for corrections) with a fixed `localDate`; soft-deleted for undo.
 - **categories** / **taskCategories**: many-to-many; priorities are just categories.
-- **exceptions** ("breaks"): scoped to a task, a category, or all tasks.
+- **exceptions** ("breaks"): cover all tasks, or any mix of tasks and categories.
 - **settings**: week start, day start hour, carry-over default.
 
 ### Rules
@@ -45,6 +47,8 @@ Progress is never stored; it's derived from append-only **events** (`+10 at 09:0
   Limit goals stay the same, but entries on break days don't count.
 - **Carry-over** (per task, one period back only): accumulate surplus lowers the next goal; limit overage lowers
   the next allowance. Unused limit allowance does not roll forward.
+- **Quick undo:** on the card buttons, pressing the opposite button within a minute of an entry deletes that
+  entry instead of recording a correction.
 - **Streaks:** consecutive successful periods; the current open period and excused periods don't break it.
 
 All rows use UUIDv7 ids, `updatedAt`, and soft deletes so sync can be added later.

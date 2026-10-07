@@ -6,11 +6,16 @@ import {
   createCategory,
   createTask,
   deleteCategory,
+  createException,
   deleteEvent,
+  duplicateTask,
   exportData,
   importData,
   moveCategory,
   recordEvent,
+  recordOrUndo,
+  retireTask,
+  UNDO_WINDOW_MS,
   taskToInput,
   updateTask,
   type TaskInput,
@@ -83,6 +88,59 @@ describe("repo", () => {
     expect((await db.categories.orderBy("sortOrder").toArray()).map((c) => c.id)).toEqual([b, a])
     await moveCategory(b, -1) // already first: no-op
     expect((await db.categories.orderBy("sortOrder").toArray()).map((c) => c.id)).toEqual([b, a])
+  })
+
+  it("duplicates without retiring, including a retired original", async () => {
+    const id = await createTask(input)
+    await retireTask(id)
+    const copy = await duplicateTask(id, { ...input, name: "Pull-ups 2" })
+    expect((await db.tasks.get(id))?.retiredAt).not.toBeNull()
+    expect((await db.tasks.get(copy))?.retiredAt).toBeNull()
+    expect((await db.tasks.get(copy))?.createdFromId).toBe(id)
+  })
+
+  it("deletes the entry instead of correcting when undone within a minute", async () => {
+    const id = await createTask(input)
+    expect(await recordOrUndo(id, 10)).toBe("recorded")
+    expect(await recordOrUndo(id, -10)).toBe("undone")
+    expect(await db.events.filter((e) => !e.deletedAt).count()).toBe(0)
+
+    // Not an exact reversal → recorded as a correction.
+    await recordOrUndo(id, 10)
+    expect(await recordOrUndo(id, -1)).toBe("recorded")
+
+    // Too late → recorded as a correction.
+    const later = Date.now() + UNDO_WINDOW_MS + 1000
+    expect(await recordOrUndo(id, 1, later)).toBe("recorded")
+  })
+
+  it("removes a deleted category from breaks", async () => {
+    const cat = await createCategory("Exercise", "#f00")
+    const other = await createCategory("Health", "#0f0")
+    const id = await createException({
+      appliesToAll: false,
+      taskIds: [],
+      categoryIds: [cat, other],
+      startDate: "2026-10-01",
+      endDate: "2026-10-02",
+      description: "",
+    })
+    await deleteCategory(cat)
+    expect((await db.exceptions.get(id))?.categoryIds).toEqual([other])
+  })
+
+  it("imports v1 exports with single-scope breaks", async () => {
+    const id = await createTask(input)
+    const data = await exportData()
+    const v1 = {
+      ...data,
+      version: 1,
+      exceptions: [
+        { id: "x", scopeType: "task", scopeId: id, startDate: "2026-10-01", endDate: "2026-10-01", description: "", updatedAt: "", deletedAt: null },
+      ],
+    }
+    await importData(JSON.parse(JSON.stringify(v1)))
+    expect(await db.exceptions.get("x")).toMatchObject({ appliesToAll: false, taskIds: [id], categoryIds: [] })
   })
 
   it("unlinks a deleted category from tasks", async () => {

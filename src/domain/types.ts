@@ -76,17 +76,17 @@ export interface TaskCategory {
   categoryId: string
 }
 
-export type ScopeType = "task" | "category" | "all"
-
 /**
  * A break from the normal schedule (vacation, sickness). Progress can still be
  * recorded; see status.ts for how targets are adjusted.
  */
 export interface TaskException {
   id: string
-  scopeType: ScopeType
-  /** Task or category id; null when scopeType is "all". */
-  scopeId: string | null
+  /** When true, taskIds and categoryIds are ignored. */
+  appliesToAll: boolean
+  taskIds: string[]
+  /** Applies to every task in these categories. */
+  categoryIds: string[]
   startDate: LocalDate
   /** Inclusive. */
   endDate: LocalDate

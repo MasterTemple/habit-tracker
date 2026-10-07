@@ -4,11 +4,13 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   CopyIcon,
+  CopyPlusIcon,
   EllipsisVerticalIcon,
   FlameIcon,
   HistoryIcon,
   MinusIcon,
   PencilIcon,
+  PlusIcon,
   SlidersHorizontalIcon,
   TreePalmIcon,
 } from "lucide-react"
@@ -23,9 +25,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
-import { moveTask, recordEvent, retireTask, unretireTask } from "@/db/repo"
+import { moveTask, recordOrUndo, retireTask, unretireTask } from "@/db/repo"
 import { isCheckbox, isExcused } from "@/domain/status"
 import type { TaskView } from "@/hooks/useAppData"
+import { useEditors } from "@/hooks/useEditors"
 import { displayValue, progressPercent, statusText } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { TaskIcon } from "./TaskIcon"
@@ -34,13 +37,12 @@ import { CategoryChip } from "./CategoryChip"
 interface Props {
   view: TaskView
   onOpen: () => void
-  onEdit: () => void
-  onCopy: () => void
   onCustomAmount: () => void
   today: string
 }
 
-export function TaskCard({ view, onOpen, onEdit, onCopy, onCustomAmount, today }: Props) {
+export function TaskCard({ view, onOpen, onCustomAmount, today }: Props) {
+  const { openTask } = useEditors()
   const { task, target, categories, summary, ctx } = view
   const { current } = summary
   const retired = !!task.retiredAt
@@ -50,7 +52,10 @@ export function TaskCard({ view, onOpen, onEdit, onCopy, onCustomAmount, today }
   const negative = current.actual < 0
   const onBreak = isExcused(today, ctx.exceptions)
 
-  const record = (amount: number) => recordEvent(task.id, amount)
+  const record = (amount: number) => recordOrUndo(task.id, amount)
+  // Every card has one "take back" button and up to three "do it" buttons. A limit
+  // counts down your allowance, so its buttons read −N (use some) and + (give back).
+  const isLimit = task.type === "limit"
 
   return (
     <div
@@ -108,13 +113,20 @@ export function TaskCard({ view, onOpen, onEdit, onCopy, onCustomAmount, today }
                   size="icon-lg"
                   disabled={current.actual <= 0}
                   onClick={() => record(-Math.min(step, current.actual))}
-                  aria-label={`Subtract ${step}`}
+                  aria-label={isLimit ? `Give back ${step}` : `Subtract ${step}`}
                 >
-                  <MinusIcon />
+                  {isLimit ? <PlusIcon /> : <MinusIcon />}
                 </Button>
                 {task.incrementAmounts.slice(0, 3).map((amount) => (
-                  <Button key={amount} variant="secondary" size="lg" className="min-w-9 px-2" onClick={() => record(amount)}>
-                    +{amount}
+                  <Button
+                    key={amount}
+                    variant="secondary"
+                    size="lg"
+                    className="min-w-9 px-2"
+                    onClick={() => record(amount)}
+                    aria-label={isLimit ? `Use ${amount}` : `Add ${amount}`}
+                  >
+                    {isLimit ? `−${amount}` : `+${amount}`}
                   </Button>
                 ))}
               </>
@@ -135,7 +147,7 @@ export function TaskCard({ view, onOpen, onEdit, onCopy, onCustomAmount, today }
               <DropdownMenuItem onSelect={onOpen}>
                 <HistoryIcon /> History
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onEdit}>
+              <DropdownMenuItem onSelect={() => openTask({ mode: "edit", taskId: task.id })}>
                 <PencilIcon /> Edit
               </DropdownMenuItem>
               {!retired && (
@@ -149,8 +161,11 @@ export function TaskCard({ view, onOpen, onEdit, onCopy, onCustomAmount, today }
                 </>
               )}
               <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => openTask({ mode: "duplicate", taskId: task.id })}>
+                <CopyPlusIcon /> Duplicate…
+              </DropdownMenuItem>
               {!retired && (
-                <DropdownMenuItem onSelect={onCopy}>
+                <DropdownMenuItem onSelect={() => openTask({ mode: "copy", taskId: task.id })}>
                   <CopyIcon /> Copy &amp; retire…
                 </DropdownMenuItem>
               )}

@@ -53,14 +53,7 @@ export function exceptionsForTask(
 ): TaskException[] {
   return exceptions.filter((e) => {
     if (e.deletedAt) return false
-    switch (e.scopeType) {
-      case "all":
-        return true
-      case "task":
-        return e.scopeId === taskId
-      case "category":
-        return e.scopeId !== null && categoryIds.includes(e.scopeId)
-    }
+    return e.appliesToAll || e.taskIds.includes(taskId) || e.categoryIds.some((id) => categoryIds.includes(id))
   })
 }
 

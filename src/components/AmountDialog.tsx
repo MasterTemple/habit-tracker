@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { recordEvent } from "@/db/repo"
+import { NumberInput } from "./NumberInput"
 import type { TaskView } from "@/hooks/useAppData"
 
 interface Props {
@@ -51,12 +52,12 @@ function AmountForm({ view, onDone }: { view: TaskView; onDone: () => void }) {
             onValueChange={([v]) => setAmount(v)}
             className="flex-1"
           />
-          <Input
-            type="number"
-            inputMode="numeric"
+          <NumberInput
+            aria-label="Amount"
             className="w-20"
             value={amount}
-            onChange={(e) => setAmount(Number(e.target.value) || 0)}
+            allowNegative
+            onChange={(n) => setAmount(n ?? 0)}
           />
         </div>
         <div className="grid gap-1.5">

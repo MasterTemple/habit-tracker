@@ -46,3 +46,8 @@ export const COLORS = [
   "#ec4899",
   "#64748b",
 ]
+
+/** The first preset color no existing item uses, cycling once all are taken. */
+export function nextColor(used: string[]): string {
+  return COLORS.find((c) => !used.includes(c)) ?? COLORS[used.length % COLORS.length]
+}

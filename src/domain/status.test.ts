@@ -63,8 +63,9 @@ function ev(localDate: string, amount = 1, deleted = false): TaskEvent {
 function exception(startDate: string, endDate: string, opts: Partial<TaskException> = {}): TaskException {
   return {
     id: `x-${startDate}`,
-    scopeType: "task",
-    scopeId: "t1",
+    appliesToAll: false,
+    taskIds: ["t1"],
+    categoryIds: [],
     startDate,
     endDate,
     description: "",
@@ -188,12 +189,13 @@ describe("exceptions", () => {
 
   it("matches exceptions by task, category, or all", () => {
     const list = [
-      exception("2026-10-01", "2026-10-02", { id: "a", scopeType: "all", scopeId: null }),
-      exception("2026-10-01", "2026-10-02", { id: "c", scopeType: "category", scopeId: "cat1" }),
-      exception("2026-10-01", "2026-10-02", { id: "t", scopeType: "task", scopeId: "other" }),
-      exception("2026-10-01", "2026-10-02", { id: "d", scopeType: "all", scopeId: null, deletedAt: "x" }),
+      exception("2026-10-01", "2026-10-02", { id: "a", appliesToAll: true, taskIds: [] }),
+      exception("2026-10-01", "2026-10-02", { id: "c", taskIds: [], categoryIds: ["cat0", "cat1"] }),
+      exception("2026-10-01", "2026-10-02", { id: "t", taskIds: ["other", "t1"] }),
+      exception("2026-10-01", "2026-10-02", { id: "x", taskIds: ["other"], categoryIds: ["cat2"] }),
+      exception("2026-10-01", "2026-10-02", { id: "d", appliesToAll: true, deletedAt: "x" }),
     ]
-    expect(exceptionsForTask("t1", ["cat1"], list).map((e) => e.id)).toEqual(["a", "c"])
+    expect(exceptionsForTask("t1", ["cat1"], list).map((e) => e.id)).toEqual(["a", "c", "t"])
   })
 })
 

@@ -5,27 +5,29 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { deleteEvent, deleteException, restoreEvent } from "@/db/repo"
+import { deleteEvent, restoreEvent } from "@/db/repo"
 import { formatRange, inRange } from "@/domain/dates"
 import { periodHistory, type PeriodStatus } from "@/domain/status"
-import type { TaskView } from "@/hooks/useAppData"
+import { useAppData, type TaskView } from "@/hooks/useAppData"
+import { breakDates, breakScopeNames } from "@/lib/breaks"
 import { goalText, progressPercent, statusText } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { TaskIcon } from "./TaskIcon"
-import { ExceptionForm } from "./ExceptionForm"
 
 interface Props {
   view: TaskView | null
   today: string
   onClose: () => void
   onEdit: (taskId: string) => void
+  onTakeBreak: (taskId: string) => void
+  onEditBreak: (breakId: string) => void
 }
 
-export function TaskDetail({ view, today, onClose, onEdit }: Props) {
+export function TaskDetail({ view, today, onClose, ...actions }: Props) {
   return (
     <Sheet open={!!view} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="bottom" className="mx-auto max-h-[92dvh] max-w-lg overflow-y-auto rounded-t-2xl">
-        {view && <Detail view={view} today={today} onEdit={onEdit} />}
+        {view && <Detail view={view} today={today} {...actions} />}
       </SheetContent>
     </Sheet>
   )
@@ -38,9 +40,15 @@ const STATE_STYLE: Record<PeriodStatus["state"], string> = {
   excused: "text-muted-foreground italic",
 }
 
-function Detail({ view, today, onEdit }: { view: TaskView; today: string; onEdit: (id: string) => void }) {
+function Detail({
+  view,
+  today,
+  onEdit,
+  onTakeBreak,
+  onEditBreak,
+}: { view: TaskView; today: string } & Omit<Props, "view" | "today" | "onClose">) {
+  const { categories, tasks } = useAppData()
   const { task, summary, ctx } = view
-  const [showBreak, setShowBreak] = useState(false)
   const history = useMemo(() => periodHistory(ctx, today, 90), [ctx, today])
   const [expanded, setExpanded] = useState<string | null>(history[0]?.range.start ?? null)
 
@@ -76,38 +84,31 @@ function Detail({ view, today, onEdit }: { view: TaskView; today: string; onEdit
           <Button variant="outline" className="flex-1" onClick={() => onEdit(task.id)}>
             <PencilIcon /> Edit
           </Button>
-          <Button variant="outline" className="flex-1" onClick={() => setShowBreak((v) => !v)}>
+          <Button variant="outline" className="flex-1" onClick={() => onTakeBreak(task.id)}>
             <TreePalmIcon /> Take a break
           </Button>
         </div>
-
-        {showBreak && (
-          <ExceptionForm
-            defaultScope={{ scopeType: "task", scopeId: task.id }}
-            suggestedCategoryIds={view.categories.map((c) => c.id)}
-            onDone={() => setShowBreak(false)}
-          />
-        )}
 
         {taskExceptions.length > 0 && (
           <div className="grid gap-1">
             <h3 className="text-sm font-medium">Breaks</h3>
             {taskExceptions.map((e) => (
-              <div key={e.id} className="flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-sm">
-                <span>
-                  {e.startDate} → {e.endDate}
-                  {e.description && <span className="text-muted-foreground"> · {e.description}</span>}
-                  {e.scopeType !== "task" && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      ({e.scopeType === "all" ? "all tasks" : view.categories.find((c) => c.id === e.scopeId)?.name})
-                    </span>
-                  )}
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => onEditBreak(e.id)}
+                className="rounded-md bg-muted px-3 py-1.5 text-left text-sm"
+              >
+                {breakDates(e)}
+                {e.description && <span className="text-muted-foreground"> · {e.description}</span>}
+                <span className="block text-xs text-muted-foreground">
+                  {breakScopeNames(
+                    e,
+                    categories,
+                    tasks.map((t) => t.task),
+                  ).join(", ")}
                 </span>
-                <Button variant="ghost" size="icon-sm" onClick={() => deleteException(e.id)} aria-label="Remove break">
-                  <Trash2Icon />
-                </Button>
-              </div>
+              </button>
             ))}
           </div>
         )}
