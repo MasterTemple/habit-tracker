@@ -256,18 +256,32 @@ async fn check_action(
 
     match action.kind.as_str() {
         "report" => {
-            let (subject, text) =
+            let report =
                 reports::weekly_style_report(data, &action.scope, action.period, &now, &actor);
+            let reports::Report { subject, text, .. } = &report;
             if recipients.is_empty() && friends_without_email.is_empty() {
                 recipients.extend(email::user_email(state, user_id).await?);
             }
+            // Rendered only when it'll be emailed. Without it the email still goes.
+            let pdf = if recipients.is_empty() {
+                None
+            } else {
+                reports::render_pdf(&report).await
+            };
             for to in recipients {
                 let job = EmailJob {
                     to: to.clone(),
                     subject: subject.clone(),
-                    html: Some(email::html_from_text(&text)),
+                    html: Some(email::html_from_text(text)),
                     text: text.clone(),
-                    attachments: vec![],
+                    attachments: pdf
+                        .iter()
+                        .map(|pdf| EmailAttachment {
+                            filename: report.pdf_filename(now.today),
+                            content_type: "application/pdf".into(),
+                            data: base64::engine::general_purpose::STANDARD.encode(pdf),
+                        })
+                        .collect(),
                 };
                 email::queue(
                     state,

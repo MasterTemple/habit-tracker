@@ -1,6 +1,13 @@
+import { FileDownIcon, LoaderCircleIcon } from "lucide-react"
 import { useMemo, useState } from "react"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import type { TaskView } from "@/hooks/useAppData"
+import { useSync } from "@/hooks/useSync"
+import { saveFile } from "@/lib/files"
+import { reportPdf } from "@/sync/api"
 import { taskRates, weeklyOutcomes } from "@/lib/insights"
 import type { InsightsProps } from "./InsightsSheet"
 import { RangePicker, TaskRateChart, WeeklyOutcomeChart } from "./charts"
@@ -8,7 +15,7 @@ import { RangePicker, TaskRateChart, WeeklyOutcomeChart } from "./charts"
 const WEEKS = [8, 12, 26] as const
 
 /** Loaded on first open, so the chart library isn't in the startup bundle. */
-export default function InsightsBody({ tasks, today, weekStartsOn, scope }: InsightsProps) {
+export default function InsightsBody({ tasks, today, weekStartsOn, scope, pdf }: InsightsProps) {
   const [weeks, setWeeks] = useState<(typeof WEEKS)[number]>(WEEKS[0])
   const weekly = useMemo(() => weeklyOutcomes(tasks, today, weeks, weekStartsOn), [tasks, today, weeks, weekStartsOn])
   const since = weekly[0].start
@@ -49,6 +56,8 @@ export default function InsightsBody({ tasks, today, weekStartsOn, scope }: Insi
             <TaskRateChart rates={rates} />
           </div>
         )}
+
+        {pdf && <PdfReport categoryIds={pdf.categoryIds} today={today} />}
       </div>
     </>
   )
@@ -61,5 +70,38 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       <div className="truncate text-xs text-muted-foreground">{label}</div>
       {hint && <div className="truncate text-xs text-muted-foreground">{hint}</div>}
     </div>
+  )
+}
+
+/** The server's PDF report of your synced data (the same one scheduled reports email). */
+function PdfReport({ categoryIds, today }: { categoryIds: string[]; today: string }) {
+  const account = useSync()?.account
+  const [busy, setBusy] = useState(false)
+  if (!account?.token) {
+    return <p className="text-center text-xs text-muted-foreground">Sign in (Settings) for PDF reports.</p>
+  }
+  const download = async (period: "week" | "month") => {
+    setBusy(true)
+    try {
+      const blob = await reportPdf(account.serverUrl, account.token, period, categoryIds)
+      await saveFile(new File([blob], `habit-report-${today}.pdf`, { type: "application/pdf" }))
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" disabled={busy}>
+          {busy ? <LoaderCircleIcon className="animate-spin" /> : <FileDownIcon />} PDF report…
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="center">
+        <DropdownMenuItem onSelect={() => download("week")}>Last 7 days</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => download("month")}>Last 30 days</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

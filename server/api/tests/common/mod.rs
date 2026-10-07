@@ -91,6 +91,33 @@ impl TestApp {
         (status, json)
     }
 
+    /// A GET whose body isn't JSON: status, content type, and the raw bytes.
+    pub async fn get_bytes(
+        &self,
+        path: &str,
+        token: Option<&str>,
+    ) -> (StatusCode, String, Vec<u8>) {
+        let mut req = Request::builder().method(Method::GET).uri(path);
+        if let Some(t) = token {
+            req = req.header(header::AUTHORIZATION, format!("Bearer {t}"));
+        }
+        let res = self
+            .router
+            .clone()
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let content_type = res
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        (status, content_type, bytes.to_vec())
+    }
+
     pub async fn get(&self, path: &str, token: Option<&str>) -> (StatusCode, Value) {
         self.call(Method::GET, path, token, None).await
     }

@@ -168,6 +168,47 @@ async fn weekly_reports_go_to_the_chosen_people() {
 }
 
 #[tokio::test]
+async fn reports_come_with_a_pdf() {
+    let report: Value = serde_json::from_str(&format!(
+        r#"{{ "id": "rep1", "kind": "report", "name": "Weekly", "enabled": true, "scope": {ALL},
+             "schedule": {{ "repeat": "weekly", "time": "18:00", "weekdays": [6], "monthDay": 1 }},
+             "period": "week", "contactIds": [], "emails": [], "updatedAt": "{T0}", "deletedAt": null }}"#
+    ))
+    .unwrap();
+    let (app, token, mailbox) =
+        setup(json!({ "automations": [report], "events": [entry("e1", 100.0, "2026-10-05")] }))
+            .await;
+    at(&app, 2026, 10, 11, 0, 0).await; // Sat 18:00 Denver
+    let mail = sent(&mailbox);
+    assert_eq!(mail.len(), 1, "to the account's own address");
+    let pdf = &mail[0].attachments[0];
+    assert_eq!(
+        (pdf.filename.as_str(), pdf.content_type.as_str()),
+        ("habit-report-2026-10-10.pdf", "application/pdf")
+    );
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&pdf.data)
+        .unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+
+    // The same report on demand.
+    let (status, content_type, bytes) = app
+        .get_bytes("/reports/pdf?period=month", Some(&token))
+        .await;
+    assert_eq!(
+        (status, content_type.as_str()),
+        (StatusCode::OK, "application/pdf")
+    );
+    assert!(bytes.starts_with(b"%PDF-"));
+    let (status, _, _) = app
+        .get_bytes("/reports/pdf?period=year", Some(&token))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _, _) = app.get_bytes("/reports/pdf", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn backups_arrive_as_importable_attachments() {
     let backup: Value = serde_json::from_str(&format!(
         r#"{{ "id": "b1", "kind": "export", "name": "", "enabled": true, "scope": {ALL},

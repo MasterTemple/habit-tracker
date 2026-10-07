@@ -13,6 +13,8 @@ export interface InsightsProps {
   weekStartsOn: WeekStart
   /** e.g. "Exercise" when the list is filtered. */
   scope: string
+  /** Offer a PDF of your own report (not for someone else's tasks), limited to these categories (empty = all). */
+  pdf?: { categoryIds: string[] }
 }
 
 /** How goals have gone lately: met vs missed by week, and each task's rate. */

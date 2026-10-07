@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 habit-core = { path = "../core" }
+habit-pdf = { path = "../pdf" }
 aes-gcm = "0.10"
 argon2 = { version = "0.5", features = ["std"] }
 axum = "0.8"

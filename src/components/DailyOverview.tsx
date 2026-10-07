@@ -112,6 +112,7 @@ export function DailyOverview({ tasks, filter, readOnly }: Props) {
         today={today}
         weekStartsOn={settings.weekStartsOn}
         scope={filteredTo.length > 0 ? filteredTo.join(", ") : "All tasks"}
+        pdf={readOnly ? undefined : { categoryIds: categories.filter((c) => filter.includes(c.id)).map((c) => c.id) }}
       />
       {!readOnly && <CreateButton onClick={() => openTask({ mode: "new" })} label="New task" />}
     </div>

@@ -122,6 +122,7 @@ pub fn app(state: AppState) -> Router {
         .merge(alerts::router())
         .merge(friends::router())
         .merge(shares::router())
+        .merge(reports::router())
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024))
         .layer(cors)

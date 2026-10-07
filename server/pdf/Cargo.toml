@@ -1,0 +1,14 @@
+[package]
+name = "habit-pdf"
+version = "0.1.0"
+description = "PDF reports rendered with Typst"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+typst = "0.15"
+typst-pdf = "0.15"
+typst-layout = "0.15"
+typst-assets = { version = "0.15", features = ["fonts"] }

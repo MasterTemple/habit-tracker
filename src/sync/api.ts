@@ -70,3 +70,21 @@ export function passwordError(e: unknown): string {
   if (e instanceof ApiError && e.code === "bad_credentials") return "That password isn't right."
   return (e as Error).message
 }
+
+/** The signed-in user's progress report as a PDF (rendered by the server). */
+export async function reportPdf(serverUrl: string, token: string, period: "week" | "month", categoryIds: string[]): Promise<Blob> {
+  const query = new URLSearchParams({ period, categories: categoryIds.join(",") })
+  let res: Response
+  try {
+    res = await fetch(`${serverUrl.replace(/\/+$/, "")}/reports/pdf?${query}`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+  } catch {
+    throw new ApiError(0, "offline", "Can't reach the server")
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, body?.error ?? "error", body?.message ?? `Server error (${res.status})`)
+  }
+  return res.blob()
+}
