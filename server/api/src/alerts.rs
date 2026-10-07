@@ -288,9 +288,11 @@ fn parse<T: for<'de> Deserialize<'de>>(rows: &[Value], kind: &str) -> Vec<T> {
         .collect()
 }
 
-/// Account ids (and usernames) of a rule's recipients: its contacts who have accounts here.
+/// Account ids of a rule's recipients: its contacts who have accounts here and are
+/// accepted friends (so knowing a username isn't enough to send someone alerts).
 async fn recipients(
     state: &AppState,
+    owner: &str,
     data: &UserData,
     contact_ids: &[String],
 ) -> ApiResult<Vec<String>> {
@@ -316,7 +318,11 @@ async fn recipients(
             .bind(&username)
             .fetch_optional(&state.db)
             .await?;
-        ids.extend(id);
+        if let Some(id) = id
+            && crate::friends::are_friends(&state.db, owner, &id).await?
+        {
+            ids.insert(id);
+        }
     }
     Ok(ids.into_iter().collect())
 }
@@ -398,7 +404,7 @@ pub async fn check_user(state: &AppState, user_id: &str) -> ApiResult<()> {
             } else {
                 vec![]
             };
-            for recipient in recipients(state, &data, &rule.contact_ids).await? {
+            for recipient in recipients(state, user_id, &data, &rule.contact_ids).await? {
                 notify(
                     state,
                     &recipient,
@@ -647,7 +653,7 @@ async fn announce_rule_changes(
         } else {
             rule.name.trim().to_string()
         };
-        let recipients = recipients(state, data, &rule.contact_ids).await?;
+        let recipients = recipients(state, user_id, data, &rule.contact_ids).await?;
         let before: Option<RuleSnapshot> = previous
             .iter()
             .find(|(k, _)| *k == key)

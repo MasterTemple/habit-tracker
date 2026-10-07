@@ -1,6 +1,7 @@
 import { format } from "date-fns"
 import { parseLocalDate } from "@/domain/dates"
 import { overview, taskFraction } from "@/domain/status"
+import type { Category } from "@/domain/types"
 import { useAppData, type TaskView } from "@/hooks/useAppData"
 import { useEditors } from "@/hooks/useEditors"
 import { CreateButton } from "./PageHeader"
@@ -14,6 +15,8 @@ interface Props {
   tasks: TaskView[]
   /** Category ids the list is filtered to (empty = all). */
   filter: string[]
+  /** For someone else's tasks: their date and categories, and no "new task" button. */
+  readOnly?: { today: string; categories: Category[] }
 }
 
 /**
@@ -21,8 +24,9 @@ interface Props {
  * period, and "new task". The ring is split into one segment per task, colored by
  * the task's highest-priority visible category, so its colors match the filter.
  */
-export function DailyOverview({ tasks, filter }: Props) {
-  const { today, categories } = useAppData()
+export function DailyOverview({ tasks, filter, readOnly }: Props) {
+  const app = useAppData()
+  const { today, categories } = readOnly ?? app
   const { openTask } = useEditors()
   const o = overview(tasks.map((t) => ({ task: t.task, current: t.summary.current })))
   const percent = Math.round(o.progress * 100)
@@ -87,7 +91,7 @@ export function DailyOverview({ tasks, filter }: Props) {
           </div>
         )}
       </div>
-      <CreateButton onClick={() => openTask({ mode: "new" })} label="New task" />
+      {!readOnly && <CreateButton onClick={() => openTask({ mode: "new" })} label="New task" />}
     </div>
   )
 }

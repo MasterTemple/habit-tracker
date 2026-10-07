@@ -68,6 +68,12 @@ inboxes and devices, by their username here) and outgoing webhooks (JSON, signed
 `X-Habit-Signature`, only to public internet addresses). Turning an alert on, off, or deleting it tells its recipients,
 who can list alerts about them.
 
+**Friends and sharing.** `GET /users/search`, `GET /friends`, `POST /friends/{username}/request|accept`,
+`DELETE /friends/{username}`. Alerts and shares only reach accepted friends. A "view" share lets chosen friends see
+the shared tasks (`GET /shared`, `GET /shared/{username}`) and, optionally, anyone with its link (`GET /s/{token}`,
+no account). Shared data is the owner's rows for those tasks only, without entry notes or break reasons. The app
+shows it with the normal task views, read-only, on the owner's clock and time zone, under a banner with a back arrow.
+
 **Notifications.** Web Push with RFC 8291 encryption and VAPID (pure Rust crypto; checked against the RFC's
 example). Only real push services are accepted as endpoints. Every notice goes to the user's inbox and a delivery
 queue that retries with backoff and drops unsubscribed devices. A scheduler (every 30 s) fires reminders at their

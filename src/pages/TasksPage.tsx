@@ -62,7 +62,14 @@ export function TasksPage() {
     <Tabs value={tab} onValueChange={setTab}>
       <PinnedTabs tabs={TABS}>{tab === "tasks" && <DailyOverview tasks={overviewTasks} filter={filter} />}</PinnedTabs>
       <TabsContent value="tasks">
-        <TaskList active={active} retired={retired} filter={filter} setFilter={setFilter} show={show} setShow={setShow} />
+        <TaskList
+          active={active}
+          retired={retired}
+          filter={filter}
+          setFilter={setFilter}
+          show={show}
+          setShow={setShow}
+        />
       </TabsContent>
       <TabsContent value="categories">
         <CategoriesList
@@ -199,22 +206,24 @@ function TaskList({ active, retired, filter, setFilter, show, setShow }: TaskLis
         view={find(detailId)}
         today={today}
         onClose={() => setDetailId(null)}
-        onEdit={(taskId) => {
-          setDetailId(null)
-          openTask({ mode: "edit", taskId })
-        }}
-        onViewBreaks={() => {
-          setDetailId(null)
-          setTab("schedule", "breaks")
-          setPage("schedule")
-        }}
-        onTakeBreak={(taskId) => {
-          setDetailId(null)
-          openBreak({ preset: { taskIds: [taskId] } })
-        }}
-        onEditBreak={(id) => {
-          setDetailId(null)
-          openBreak({ id })
+        actions={{
+          onEdit: (taskId) => {
+            setDetailId(null)
+            openTask({ mode: "edit", taskId })
+          },
+          onViewBreaks: () => {
+            setDetailId(null)
+            setTab("schedule", "breaks")
+            setPage("schedule")
+          },
+          onTakeBreak: (taskId) => {
+            setDetailId(null)
+            openBreak({ preset: { taskIds: [taskId] } })
+          },
+          onEditBreak: (id) => {
+            setDetailId(null)
+            openBreak({ id })
+          },
         }}
       />
       <AmountDialog view={find(amountId)} onClose={() => setAmountId(null)} />

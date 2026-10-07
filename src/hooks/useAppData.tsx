@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { db } from "@/db/db"
 import { getSettings } from "@/db/repo"
 import { toLocalDate, toLocalTime } from "@/domain/dates"
-import { currentTarget, exceptionsForTask, summarize, type TaskContext, type TaskSummary } from "@/domain/status"
+import { deriveTaskViews } from "@/lib/taskViews"
+import type { TaskContext, TaskSummary } from "@/domain/status"
 import type {
   Automation,
   Category,
@@ -82,25 +83,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppData | null>(() => {
     if (!raw) return null
-    const categoriesById = new Map(raw.categories.map((c) => [c.id, c]))
-    const tasks = raw.tasks.map((task) => {
-      const categoryIds = task.categoryIds ?? []
-      const ctx: TaskContext = {
-        task,
-        targets: raw.targets.filter((t) => t.taskId === task.id),
-        events: raw.events.filter((e) => e.taskId === task.id),
-        exceptions: exceptionsForTask(task.id, categoryIds, raw.exceptions),
-        settings: raw.settings,
-        now,
-      }
-      return {
-        task,
-        target: currentTarget(ctx.targets, today),
-        categories: categoryIds.map((id) => categoriesById.get(id)).filter((c): c is Category => !!c),
-        ctx,
-        summary: summarize(ctx, today),
-      }
-    })
+    const tasks = deriveTaskViews(raw, today, now)
     return {
       settings: raw.settings,
       today,

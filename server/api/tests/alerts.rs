@@ -88,10 +88,27 @@ struct Setup {
 
 /// Blake (Denver) has three tasks, an alert rule telling Sam, and an outgoing webhook.
 /// The clock starts at 2026-10-06 06:00 Denver, and one scheduler pass has looked around.
+/// Makes the two users friends (alerts only reach friends).
+async fn befriend(app: &TestApp, a: &str, b: &str, b_username: &str, a_username: &str) {
+    let (status, _) = app
+        .post(
+            &format!("/friends/{b_username}/request"),
+            Some(a),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = app
+        .post(&format!("/friends/{a_username}/accept"), Some(b), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
 async fn setup() -> Setup {
     let app = TestApp::new().await;
     let blake = app.register("blake", PASSWORD).await;
     let sam = app.register("sam", PASSWORD).await;
+    befriend(&app, &blake, &sam, "sam", "blake").await;
     let (hooks, url) = receiver().await;
     let (status, body) = app
         .post(
@@ -153,6 +170,7 @@ async fn sams_inbox(s: &Setup) -> Vec<String> {
         .as_array()
         .unwrap()
         .iter()
+        .filter(|i| !i["kind"].as_str().unwrap().starts_with("friend"))
         .map(|i| i["body"].as_str().unwrap().to_string())
         .collect();
     items.reverse();
@@ -302,6 +320,7 @@ async fn unmet_goals_and_broken_streaks_are_reported_when_the_day_ends() {
             hooks: Arc::default(),
             app,
         };
+        befriend(&s.app, &s.blake, &s.sam, "sam", "blake").await;
         let done = |id: &str, d: &str| {
             json!({ "id": id, "taskId": "proverb", "amount": 1, "occurredAt": T0, "localDate": d,
                                                 "localTime": "08:00", "timeZone": "", "note": "", "createdAt": T0, "updatedAt": T0, "deletedAt": null })
@@ -510,4 +529,33 @@ fn public_address_check() {
     ] {
         assert!(!is_public(ip.parse::<IpAddr>().unwrap()), "{ip}");
     }
+}
+
+#[tokio::test]
+async fn alerts_only_reach_friends() {
+    let app = TestApp::new().await;
+    let blake = app.register("blake", PASSWORD).await;
+    let sam = app.register("sam", PASSWORD).await;
+    app.post("/sync", Some(&blake), json!({ "cursor": 0, "timeZone": "America/Denver", "changes": {
+        "contacts": [{ "id": "c-sam", "name": "Sam", "username": "sam", "updatedAt": T0, "deletedAt": null }],
+        "shares": [notify_rule(true, 0)] } }))
+    .await;
+    scheduler::tick(&app.state).await.unwrap();
+    let (_, inbox) = app.get("/inbox", Some(&sam)).await;
+    assert_eq!(inbox["items"], json!([]), "not friends: nothing");
+    assert_eq!(
+        app.get("/alerts/incoming", Some(&sam)).await.1["alerts"],
+        json!([])
+    );
+
+    befriend(&app, &blake, &sam, "sam", "blake").await;
+    scheduler::tick(&app.state).await.unwrap();
+    let (_, inbox) = app.get("/inbox", Some(&sam)).await;
+    assert!(
+        inbox["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["kind"] == "alert-status")
+    );
 }

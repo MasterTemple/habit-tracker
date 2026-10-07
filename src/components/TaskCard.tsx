@@ -44,9 +44,11 @@ interface Props {
   today: string
   /** From useDragHandle: the icon becomes the drag handle. */
   drag?: DragProps
+  /** Someone else's task: no buttons or menu. */
+  readOnly?: boolean
 }
 
-export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
+export function TaskCard({ view, onOpen, onCustomAmount, today, drag, readOnly }: Props) {
   const { openTask } = useEditors()
   const { settings } = useAppData()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -147,6 +149,7 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
 
         <div className="flex shrink-0 items-center gap-1">
           {!retired &&
+            !readOnly &&
             (checkbox ? (
               <Checkbox
                 className="size-7 rounded-md"
@@ -183,64 +186,70 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
               </>
             ))}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-lg" aria-label="Options">
-                <EllipsisVerticalIcon />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {!retired && (
-                <DropdownMenuItem onSelect={onCustomAmount}>
-                  <SlidersHorizontalIcon /> Custom amount…
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onSelect={onOpen}>
-                <HistoryIcon /> History
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openTask({ mode: "edit", taskId: task.id })}>
-                <PencilIcon /> Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => openTask({ mode: "duplicate", taskId: task.id })}>
-                <CopyPlusIcon /> Duplicate…
-              </DropdownMenuItem>
-              {!retired && (
-                <DropdownMenuItem onSelect={() => openTask({ mode: "copy", taskId: task.id })}>
-                  <CopyIcon /> Copy &amp; retire…
-                </DropdownMenuItem>
-              )}
-              {retired ? (
-                <DropdownMenuItem onSelect={() => unretireTask(task.id)}>
-                  <ArchiveRestoreIcon /> Unretire
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem
-                  onSelect={async () => {
-                    await retireTask(task.id)
-                    toast(`Retired “${task.name}”`, { action: { label: "Undo", onClick: () => unretireTask(task.id) } })
-                  }}
-                >
-                  <ArchiveIcon /> Retire
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
-                <Trash2Icon /> Delete…
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DeleteTaskDialog
-            open={confirmDelete}
-            onOpenChange={setConfirmDelete}
-            name={task.name}
-            entries={ctx.events.length}
-            retired={retired}
-            onRetire={() => retireTask(task.id)}
-            onDelete={async () => {
-              await deleteTask(task.id)
-              toast(`Deleted “${task.name}”`)
-            }}
-          />
+          {!readOnly && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-lg" aria-label="Options">
+                    <EllipsisVerticalIcon />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {!retired && (
+                    <DropdownMenuItem onSelect={onCustomAmount}>
+                      <SlidersHorizontalIcon /> Custom amount…
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onSelect={onOpen}>
+                    <HistoryIcon /> History
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openTask({ mode: "edit", taskId: task.id })}>
+                    <PencilIcon /> Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => openTask({ mode: "duplicate", taskId: task.id })}>
+                    <CopyPlusIcon /> Duplicate…
+                  </DropdownMenuItem>
+                  {!retired && (
+                    <DropdownMenuItem onSelect={() => openTask({ mode: "copy", taskId: task.id })}>
+                      <CopyIcon /> Copy &amp; retire…
+                    </DropdownMenuItem>
+                  )}
+                  {retired ? (
+                    <DropdownMenuItem onSelect={() => unretireTask(task.id)}>
+                      <ArchiveRestoreIcon /> Unretire
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onSelect={async () => {
+                        await retireTask(task.id)
+                        toast(`Retired “${task.name}”`, {
+                          action: { label: "Undo", onClick: () => unretireTask(task.id) },
+                        })
+                      }}
+                    >
+                      <ArchiveIcon /> Retire
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
+                    <Trash2Icon /> Delete…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DeleteTaskDialog
+                open={confirmDelete}
+                onOpenChange={setConfirmDelete}
+                name={task.name}
+                entries={ctx.events.length}
+                retired={retired}
+                onRetire={() => retireTask(task.id)}
+                onDelete={async () => {
+                  await deleteTask(task.id)
+                  toast(`Deleted “${task.name}”`)
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -254,8 +263,12 @@ export function TaskCard({ view, onOpen, onCustomAmount, today, drag }: Props) {
           style={{ "--bar": failed ? "var(--destructive)" : task.color } as React.CSSProperties}
         />
         <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-          <span className={cn(negative && "font-medium text-destructive")}>{displayValue(task, summary, settings.limitDisplay)}</span>
-          <span className={cn((failed || negative) && "font-medium text-destructive")}>{statusText(task, current, settings.limitDisplay)}</span>
+          <span className={cn(negative && "font-medium text-destructive")}>
+            {displayValue(task, summary, settings.limitDisplay)}
+          </span>
+          <span className={cn((failed || negative) && "font-medium text-destructive")}>
+            {statusText(task, current, settings.limitDisplay)}
+          </span>
         </div>
       </div>
     </div>

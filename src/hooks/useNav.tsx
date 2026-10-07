@@ -10,6 +10,9 @@ export const VIEWS = [
 
 export type PageId = (typeof VIEWS)[number]["page"]
 
+/** Looking at someone else's shared tasks instead of your own pages. */
+export type Viewing = { kind: "friend"; username: string } | { kind: "link"; serverUrl: string; token: string }
+
 interface Nav {
   page: PageId
   /** The direction of the last move, for the slide animation. */
@@ -23,6 +26,8 @@ interface Nav {
   openInbox: string | null
   showInboxItem: (id: string) => void
   clearOpenInbox: () => void
+  viewing: Viewing | null
+  view: (viewing: Viewing | null) => void
 }
 
 const NavContext = createContext<Nav | null>(null)
@@ -63,6 +68,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
   )
 
   const [openInbox, setOpenInbox] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<Viewing | null>(null)
   const showInboxItem = useCallback((id: string) => {
     setTabs((t) => ({ ...t, social: "inbox" }))
     setPageState("social")
@@ -71,8 +77,8 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const clearOpenInbox = useCallback(() => setOpenInbox(null), [])
 
   const value = useMemo<Nav>(
-    () => ({ page, direction, setPage, tabOf: (p) => tabs[p], setTab, step, openInbox, showInboxItem, clearOpenInbox }),
-    [page, direction, setPage, tabs, setTab, step, openInbox, showInboxItem, clearOpenInbox],
+    () => ({ page, direction, setPage, tabOf: (p) => tabs[p], setTab, step, openInbox, showInboxItem, clearOpenInbox, viewing, view: setViewing }),
+    [page, direction, setPage, tabs, setTab, step, openInbox, showInboxItem, clearOpenInbox, viewing],
   )
   return <NavContext.Provider value={value}>{children}</NavContext.Provider>
 }

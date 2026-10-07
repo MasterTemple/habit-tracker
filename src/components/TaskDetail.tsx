@@ -20,18 +20,21 @@ interface Props {
   view: TaskView | null
   today: string
   onClose: () => void
-  onEdit: (taskId: string) => void
-  onTakeBreak: (taskId: string) => void
-  /** Shows all breaks (when several cover this task today). */
-  onViewBreaks: () => void
-  onEditBreak: (breakId: string) => void
+  /** Without actions the sheet is read-only (e.g. a friend's task): no edit, breaks, or deleting entries. */
+  actions?: {
+    onEdit: (taskId: string) => void
+    onTakeBreak: (taskId: string) => void
+    /** Shows all breaks (when several cover this task today). */
+    onViewBreaks: () => void
+    onEditBreak: (breakId: string) => void
+  }
 }
 
-export function TaskDetail({ view, today, onClose, ...actions }: Props) {
+export function TaskDetail({ view, today, onClose, actions }: Props) {
   return (
     <Sheet open={!!view} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="top" className={SHEET}>
-        {view && <Detail view={view} today={today} {...actions} />}
+        {view && <Detail view={view} today={today} actions={actions} />}
       </SheetContent>
     </Sheet>
   )
@@ -44,14 +47,7 @@ const STATE_STYLE: Record<PeriodStatus["state"], string> = {
   excused: "text-muted-foreground italic",
 }
 
-function Detail({
-  view,
-  today,
-  onEdit,
-  onTakeBreak,
-  onViewBreaks,
-  onEditBreak,
-}: { view: TaskView; today: string } & Omit<Props, "view" | "today" | "onClose">) {
+function Detail({ view, today, actions }: { view: TaskView; today: string; actions: Props["actions"] }) {
   const { categories, tasks, settings } = useAppData()
   const { task, summary, ctx } = view
   const history = useMemo(() => periodHistory(ctx, today, 90), [ctx, today])
@@ -87,25 +83,27 @@ function Detail({
           <Stat label="Streak" value={summary.streak} />
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => onEdit(task.id)}>
-            <PencilIcon /> Edit
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() =>
-              currentBreaks.length === 0
-                ? onTakeBreak(task.id)
-                : currentBreaks.length === 1
-                  ? onEditBreak(currentBreaks[0].id)
-                  : onViewBreaks()
-            }
-          >
-            <TreePalmIcon />{" "}
-            {currentBreaks.length === 0 ? "Take a break" : currentBreaks.length === 1 ? "View break" : "View breaks"}
-          </Button>
-        </div>
+        {actions && (
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => actions.onEdit(task.id)}>
+              <PencilIcon /> Edit
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() =>
+                currentBreaks.length === 0
+                  ? actions.onTakeBreak(task.id)
+                  : currentBreaks.length === 1
+                    ? actions.onEditBreak(currentBreaks[0].id)
+                    : actions.onViewBreaks()
+              }
+            >
+              <TreePalmIcon />{" "}
+              {currentBreaks.length === 0 ? "Take a break" : currentBreaks.length === 1 ? "View break" : "View breaks"}
+            </Button>
+          </div>
+        )}
 
         {taskExceptions.length > 0 && (
           <div className="grid gap-1">
@@ -114,18 +112,20 @@ function Detail({
               <button
                 key={e.id}
                 type="button"
-                onClick={() => onEditBreak(e.id)}
+                onClick={() => actions?.onEditBreak(e.id)}
                 className="rounded-md bg-muted px-3 py-1.5 text-left text-sm"
               >
                 {breakDates(e)}
                 {e.description && <span className="text-muted-foreground"> · {e.description}</span>}
-                <span className="block text-xs text-muted-foreground">
-                  {breakScopeNames(
-                    e,
-                    categories,
-                    tasks.map((t) => t.task),
-                  ).join(", ")}
-                </span>
+                {actions && (
+                  <span className="block text-xs text-muted-foreground">
+                    {breakScopeNames(
+                      e,
+                      categories,
+                      tasks.map((t) => t.task),
+                    ).join(", ")}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -173,15 +173,23 @@ function Detail({
                           status.deadline.state === "on_time" ? "text-muted-foreground" : "text-destructive",
                         )}
                       >
-                        {{ on_time: "Done on time", late: "Done after the due time", missed: "Missed the due time" }[status.deadline.state]}{" "}
+                        {
+                          { on_time: "Done on time", late: "Done after the due time", missed: "Missed the due time" }[
+                            status.deadline.state
+                          ]
+                        }{" "}
                         ({formatTime(status.deadline.time)})
                       </p>
                     )}
                     {status.carried > 0 && (
-                      <p className="py-1 text-xs text-muted-foreground">Goal adjusted by {status.carried} carried over.</p>
+                      <p className="py-1 text-xs text-muted-foreground">
+                        Goal adjusted by {status.carried} carried over.
+                      </p>
                     )}
                     {statusText(task, status, settings.limitDisplay) && (
-                      <p className="py-1 text-xs text-muted-foreground">{statusText(task, status, settings.limitDisplay)}</p>
+                      <p className="py-1 text-xs text-muted-foreground">
+                        {statusText(task, status, settings.limitDisplay)}
+                      </p>
                     )}
                     {events.length === 0 && <p className="py-1 text-muted-foreground">No entries</p>}
                     {events.map((e) => (
@@ -193,9 +201,16 @@ function Detail({
                           {e.amount > 0 ? `+${e.amount}` : e.amount}
                         </span>
                         <span className="flex-1 truncate text-muted-foreground">{e.note}</span>
-                        <Button variant="ghost" size="icon-sm" onClick={() => removeEvent(e.id)} aria-label="Delete entry">
-                          <Trash2Icon />
-                        </Button>
+                        {actions && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => removeEvent(e.id)}
+                            aria-label="Delete entry"
+                          >
+                            <Trash2Icon />
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>

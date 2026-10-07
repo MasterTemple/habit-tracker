@@ -8,6 +8,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { deleteShare, newToken, saveShare, type Draft } from "@/db/repo"
 import type { Share } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
+import { shareLink } from "@/hooks/useShareLinks"
+import { useSync } from "@/hooks/useSync"
 import { CHANNEL_OPTIONS, EVENT_OPTIONS } from "@/lib/labels"
 import { SHEET } from "@/lib/viewport"
 import { Field, SwitchRow } from "./AutomationEditor"
@@ -49,6 +51,8 @@ function Form({ target, onDone }: { target: ShareTarget; onDone: () => void }) {
   const [draft, setDraft] = useState<Draft<Share>>(() => existing ?? blank("kind" in target ? target.kind : "view"))
   const set = (changes: Partial<Draft<Share>>) => setDraft((d) => ({ ...d, ...changes }) as Draft<Share>)
   const view = draft.kind === "view"
+  const account = useSync()?.account
+  const link = draft.kind === "view" && account?.token ? shareLink(account.serverUrl, draft.token) : null
 
   const hasAudience =
     draft.contactIds.length > 0 || !!draft.webhookUrl || (draft.kind === "view" && draft.anyoneWithLink)
@@ -69,8 +73,8 @@ function Form({ target, onDone }: { target: ShareTarget; onDone: () => void }) {
         </SheetTitle>
         <SheetDescription>
           {view
-            ? "Choose what people can see: your progress on these tasks (never other tasks). Takes effect once accounts and the sync server exist."
-            : "Tell people when things happen on these tasks. Takes effect once the sync server exists."}
+            ? "Choose what people can see: your progress on these tasks (never other tasks, entry notes, or break reasons). Friends see it while you're signed in."
+            : "Tell friends when things happen on these tasks. Sent by your sync server while you're signed in."}
         </SheetDescription>
       </SheetHeader>
       <div className="flex flex-col gap-5 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -115,12 +119,33 @@ function Form({ target, onDone }: { target: ShareTarget; onDone: () => void }) {
             {draft.anyoneWithLink && (
               <div className="grid gap-1.5">
                 <div className="flex gap-2">
-                  <Input readOnly value={`https://<sync server>/s/${draft.token}`} className="min-w-0 flex-1 font-mono text-xs" />
-                  <Button variant="outline" size="icon-lg" disabled aria-label="Copy link">
+                  <Input
+                    readOnly
+                    value={link ?? "Sign in to get the link"}
+                    className="min-w-0 flex-1 font-mono text-xs"
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon-lg"
+                    disabled={!link}
+                    aria-label="Copy link"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(link!)
+                        toast.success("Link copied")
+                      } catch {
+                        toast.error("Couldn't copy; select the link instead")
+                      }
+                    }}
+                  >
                     <CopyIcon />
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">The link will work once the sync server exists.</p>
+                <p className="text-xs text-muted-foreground">
+                  Anyone with this link sees these tasks (read-only), no account needed. It works once this share has
+                  synced, and stops when you turn the share off.
+                </p>
               </div>
             )}
           </>

@@ -1,18 +1,13 @@
-import { BellRingIcon, EyeIcon, LinkIcon, MessageCircleIcon, PlusIcon, SearchIcon } from "lucide-react"
+import { BellRingIcon, EyeIcon, LinkIcon, MessageCircleIcon, PlusIcon } from "lucide-react"
 import { useState } from "react"
 import { ContactEditor, type ContactTarget } from "@/components/ContactEditor"
 import { IncomingAlerts } from "@/components/IncomingAlerts"
+import { FriendsPanel } from "@/components/FriendsPanel"
 import { InboxList } from "@/components/InboxList"
 import { BottomAction, ListRow, PinnedTabs, ServerNote } from "@/components/layout"
 import { ShareEditor, type ShareTarget } from "@/components/ShareEditor"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { saveShare } from "@/db/repo"
@@ -20,6 +15,7 @@ import type { Share } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
 import { useNav, useViewTab } from "@/hooks/useNav"
 import { contactLinks, initials } from "@/lib/contacts"
+import type { FriendLists } from "@/sync/social"
 import { EVENT_OPTIONS, RELATIONSHIPS } from "@/lib/labels"
 import { scopeSummary } from "@/lib/scope"
 
@@ -48,7 +44,7 @@ export function SocialPage() {
       <TabsContent value="sharing">
         <ShareList
           kind="view"
-          note="Share rules are saved here. Links and your friends' view of your progress need accounts and the sync server."
+          note="Shares take effect through your sync server while you're signed in. Friends you pick (accepted friends, by their username) see these tasks under Friends → Shared with you; a link works for anyone you give it to."
           empty="Nothing shared. Share some tasks or categories with friends, or with anyone who has the link."
           onEdit={setShare}
         />
@@ -70,18 +66,17 @@ export function SocialPage() {
 
 function FriendsList({ onEdit }: { onEdit: (target: ContactTarget) => void }) {
   const { contacts } = useAppData()
+  const [lists, setLists] = useState<FriendLists | null>(null)
+  const friendUsernames = new Set(lists?.friends.map((f) => f.username) ?? [])
+  const isFriend = (username: string) => friendUsernames.has(username.trim().replace(/^@/, "").toLowerCase())
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative">
-        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input disabled className="pl-8" placeholder="Find people by username (needs accounts)" />
-      </div>
-      <ServerNote>
-        Accounts, finding people, and seeing their stats need the sync server. For now, keep the people you share with
-        here and message them in the apps you already use.
-      </ServerNote>
+      <FriendsPanel onChange={setLists} />
+      <h2 className="mt-2 text-sm font-semibold text-muted-foreground">Your people</h2>
       {contacts.length === 0 && (
-        <p className="mt-6 text-center text-sm text-muted-foreground">No friends yet.</p>
+        <p className="text-sm text-muted-foreground">
+          No one yet. Find friends above, or add someone to message from here.
+        </p>
       )}
       {contacts.map((c) => {
         const links = contactLinks(c)
@@ -94,7 +89,12 @@ function FriendsList({ onEdit }: { onEdit: (target: ContactTarget) => void }) {
               </span>
             }
             title={c.name}
-            subtitle={RELATIONSHIPS.find((r) => r.value === c.relationship)?.label}
+            subtitle={[
+              RELATIONSHIPS.find((r) => r.value === c.relationship)?.label,
+              c.username && `@${c.username.replace(/^@/, "")}${isFriend(c.username) ? " · connected" : ""}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
             onClick={() => onEdit(c.id)}
             trailing={
               links.length > 0 && (
@@ -121,7 +121,7 @@ function FriendsList({ onEdit }: { onEdit: (target: ContactTarget) => void }) {
       })}
       <BottomAction>
         <Button variant="outline" className="w-full" onClick={() => onEdit("new")}>
-          <PlusIcon /> New friend
+          <PlusIcon /> Add someone
         </Button>
       </BottomAction>
     </div>

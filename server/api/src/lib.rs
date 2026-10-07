@@ -6,11 +6,13 @@ pub mod auth;
 pub mod clock;
 pub mod config;
 pub mod error;
+pub mod friends;
 pub mod notifications;
 pub mod outbox;
 pub mod push;
 pub mod routes;
 pub mod scheduler;
+pub mod shares;
 pub mod sync;
 pub mod userdata;
 pub mod webhooks;
@@ -103,6 +105,8 @@ pub fn app(state: AppState) -> Router {
         .merge(notifications::router())
         .merge(webhooks::router())
         .merge(alerts::router())
+        .merge(friends::router())
+        .merge(shares::router())
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024))
         .layer(cors)
