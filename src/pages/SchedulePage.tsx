@@ -72,9 +72,11 @@ function BreaksList() {
           {showPast && <BreakGroup items={past} />}
         </div>
       )}
-      <Button variant="outline" onClick={() => openBreak({})}>
-        <PlusIcon /> New break
-      </Button>
+      <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 -mx-4 bg-background/95 px-4 py-2 backdrop-blur">
+        <Button variant="outline" className="w-full" onClick={() => openBreak({})}>
+          <PlusIcon /> New break
+        </Button>
+      </div>
     </div>
   )
 }

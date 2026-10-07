@@ -36,9 +36,12 @@ export function CategoriesList({ onShowTasks }: { onShowTasks: (categoryId: stri
           </SortableList>
         </div>
       )}
-      <Button variant="outline" onClick={() => openCategory("new")}>
-        <PlusIcon /> New category
-      </Button>
+      {/* Stays just above the bottom nav when the list is long, so it never needs scrolling to. */}
+      <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 -mx-4 bg-background/95 px-4 py-2 backdrop-blur">
+        <Button variant="outline" className="w-full" onClick={() => openCategory("new")}>
+          <PlusIcon /> New category
+        </Button>
+      </div>
     </div>
   )
 }

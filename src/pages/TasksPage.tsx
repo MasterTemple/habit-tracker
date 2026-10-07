@@ -4,6 +4,7 @@ import { AmountDialog } from "@/components/AmountDialog"
 import { CategoriesList } from "@/components/CategoriesList"
 import { CategoryChip } from "@/components/CategoryChip"
 import { DailyOverview } from "@/components/DailyOverview"
+import { ScrollRow } from "@/components/ScrollRow"
 import { SortableList, useDragHandle } from "@/components/Sortable"
 import { TaskCard } from "@/components/TaskCard"
 import { TaskDetail } from "@/components/TaskDetail"
@@ -84,7 +85,7 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
   return (
     <div className="flex flex-col gap-3">
       {categories.length > 0 && (
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
+        <ScrollRow className="gap-1.5 py-0.5">
           <button
             type="button"
             onClick={() => setFilter([])}
@@ -118,7 +119,7 @@ function TaskList({ active, retired, filter, setFilter }: TaskListProps) {
               {settings.uncategorizedName || "Other"}
             </button>
           )}
-        </div>
+        </ScrollRow>
       )}
 
       {tasks.length === 0 && (
