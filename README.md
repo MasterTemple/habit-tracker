@@ -36,6 +36,25 @@ bun run fixtures              # regenerate the fixture after an intentional rule
 cd server && cargo test       # …then make the Rust port match it
 ```
 
+`server/api` is the server itself (axum + SQLite). So far: accounts and sessions.
+
+```sh
+cd server
+SIGNUP_CODE=pick-one cargo run -p habit-api   # http://127.0.0.1:8080, database in ./habits.db
+```
+
+| Variable | Default | |
+|---|---|---|
+| `BIND` | `127.0.0.1:8080` | Address to listen on |
+| `DATABASE_URL` | `sqlite://habits.db` | Created and migrated on start |
+| `ALLOWED_ORIGINS` | `https://mastertemple.github.io,https://localhost:5173` | Web app origins allowed to call the API |
+| `SIGNUP_CODE` | unset (open sign-up) | Required to create an account when set; set it on a public server |
+| `SESSION_DAYS` | `90` | Sessions expire after this long unused |
+
+Endpoints: `GET /health`, `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET`/`PATCH /me`,
+`POST /me/password`. Passwords (min 10 characters) are stored as Argon2id hashes; session tokens are stored only
+as SHA-256 hashes; failed logins lock a username for 15 minutes after 10 tries.
+
 
 
 ```
