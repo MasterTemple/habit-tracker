@@ -129,7 +129,7 @@ export function periodStatus(
   const ended = range.end < today
 
   if (task.type === "track") {
-    const actual = Math.max(0, sumEvents(ctx.events, (d) => inRange(d, range)))
+    const actual = sumEvents(ctx.events, (d) => inRange(d, range))
     return {
       period,
       range,
@@ -146,12 +146,12 @@ export function periodStatus(
   const excusedDays = countExcusedDays(range, ctx.exceptions)
   const fullyExcused = excusedDays === rangeLength(range)
 
-  const actual = Math.max(
-    0,
+  // Not clamped at 0: a negative total means a correction outlived the entry it
+  // corrected, and hiding that would make later entries look like they vanished.
+  const actual =
     task.type === "limit"
       ? sumEvents(ctx.events, (d) => inRange(d, range) && !isExcused(d, ctx.exceptions))
-      : sumEvents(ctx.events, (d) => inRange(d, range)),
-  )
+      : sumEvents(ctx.events, (d) => inRange(d, range))
 
   const base = { period, range, target, actual, excusedDays }
 
@@ -230,10 +230,52 @@ export function streak(ctx: TaskContext, today: LocalDate): number {
 export function summarize(ctx: TaskContext, today: LocalDate): TaskSummary {
   return {
     current: periodStatus(ctx, today, today),
-    today: Math.max(0, sumEvents(ctx.events, (d) => d === today)),
-    total: Math.max(0, sumEvents(ctx.events, () => true)),
+    today: sumEvents(ctx.events, (d) => d === today),
+    total: sumEvents(ctx.events, () => true),
     streak: streak(ctx, today),
   }
+}
+
+export interface Overview {
+  /** Average completion (0–1) across tasks with a goal that aren't excused. */
+  progress: number
+  done: number
+  remaining: number
+  over: number
+  /** Tasks counted in the totals above. */
+  counted: number
+  excused: number
+}
+
+/**
+ * Progress across all tasks right now. Each task contributes its current period:
+ * accumulate counts by fraction of its goal; a limit counts fully while within it.
+ * Track tasks have no goal and are left out.
+ */
+export function overview(statuses: { task: Task; current: PeriodStatus }[]): Overview {
+  const result: Overview = { progress: 0, done: 0, remaining: 0, over: 0, counted: 0, excused: 0 }
+  let sum = 0
+  for (const { task, current } of statuses) {
+    if (task.type === "track" || current.goal === null) continue
+    if (current.state === "excused") {
+      result.excused++
+      continue
+    }
+    result.counted++
+    if (task.type === "accumulate") {
+      const fraction = current.goal === 0 ? 1 : Math.min(1, Math.max(0, current.actual / current.goal))
+      sum += fraction
+      if (current.state === "success") result.done++
+      else result.remaining++
+    } else if (current.state === "failure") {
+      result.over++
+    } else {
+      sum += 1
+      result.done++
+    }
+  }
+  result.progress = result.counted === 0 ? 0 : sum / result.counted
+  return result
 }
 
 /** True when the task's goal is "once per period", so the UI shows a checkbox. */

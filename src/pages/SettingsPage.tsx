@@ -1,17 +1,38 @@
-import { DownloadIcon, PlusIcon, Trash2Icon, UploadIcon, WebhookIcon } from "lucide-react"
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  DownloadIcon,
+  EllipsisVerticalIcon,
+  PlusIcon,
+  Trash2Icon,
+  TreePalmIcon,
+  UploadIcon,
+  WebhookIcon,
+} from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
+import { ColorPicker } from "@/components/ColorPicker"
 import { ExceptionForm } from "@/components/ExceptionForm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
+  createCategory,
   deleteCategory,
   deleteException,
   exportData,
   importData,
+  moveCategory,
   updateCategory,
   updateSettings,
 } from "@/db/repo"
@@ -29,6 +50,15 @@ function hourLabel(hour: number) {
 export function SettingsPage() {
   const { settings, categories, exceptions, tasks, today } = useAppData()
   const [addingBreak, setAddingBreak] = useState(false)
+  const [breakFor, setBreakFor] = useState<string | null>(null)
+  const [newCategory, setNewCategory] = useState("")
+
+  const addCategory = async () => {
+    const name = newCategory.trim()
+    if (!name) return
+    await createCategory(name, COLORS[categories.length % COLORS.length])
+    setNewCategory("")
+  }
   const fileInput = useRef<HTMLInputElement>(null)
 
   const upcomingBreaks = exceptions
@@ -120,32 +150,73 @@ export function SettingsPage() {
       </Section>
 
       <Section title="Categories">
-        {categories.length === 0 && (
-          <p className="text-sm text-muted-foreground">Create categories from the task editor.</p>
-        )}
-        {categories.map((c) => (
-          <div key={c.id} className="flex items-center gap-2">
-            <button
-              type="button"
-              className="size-6 shrink-0 rounded-full"
-              style={{ backgroundColor: c.color }}
-              onClick={() => updateCategory(c.id, { color: COLORS[(COLORS.indexOf(c.color) + 1) % COLORS.length] })}
-              aria-label="Change color"
-            />
-            <Input
-              defaultValue={c.name}
-              onBlur={(e) => e.target.value.trim() && updateCategory(c.id, { name: e.target.value.trim() })}
-            />
-            <Button
-              variant="ghost"
-              size="icon-lg"
-              onClick={() => confirm(`Delete category “${c.name}”? Tasks keep their data.`) && deleteCategory(c.id)}
-              aria-label={`Delete ${c.name}`}
-            >
-              <Trash2Icon />
-            </Button>
+        {categories.map((c, i) => (
+          <div key={c.id} className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="size-7 shrink-0 rounded-full"
+                    style={{ backgroundColor: c.color }}
+                    aria-label={`Change color of ${c.name}`}
+                  />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto">
+                  <ColorPicker value={c.color} onChange={(color) => updateCategory(c.id, { color })} />
+                </PopoverContent>
+              </Popover>
+              <Input
+                defaultValue={c.name}
+                onBlur={(e) => e.target.value.trim() && updateCategory(c.id, { name: e.target.value.trim() })}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-lg" aria-label={`Options for ${c.name}`}>
+                    <EllipsisVerticalIcon />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem disabled={i === 0} onSelect={() => moveCategory(c.id, -1)}>
+                    <ArrowUpIcon /> Move up
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={i === categories.length - 1} onSelect={() => moveCategory(c.id, 1)}>
+                    <ArrowDownIcon /> Move down
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setBreakFor(c.id)}>
+                    <TreePalmIcon /> Take a break…
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() =>
+                      confirm(`Delete category “${c.name}”? Tasks keep their data.`) && deleteCategory(c.id)
+                    }
+                  >
+                    <Trash2Icon /> Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            {breakFor === c.id && (
+              <ExceptionForm
+                defaultScope={{ scopeType: "category", scopeId: c.id }}
+                onDone={() => setBreakFor(null)}
+              />
+            )}
           </div>
         ))}
+        <div className="flex gap-2">
+          <Input
+            value={newCategory}
+            onChange={(e) => setNewCategory(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addCategory()}
+            placeholder="New category"
+          />
+          <Button variant="outline" size="icon-lg" onClick={addCategory} aria-label="Add category">
+            <PlusIcon />
+          </Button>
+        </div>
       </Section>
 
       <Section title="Breaks">

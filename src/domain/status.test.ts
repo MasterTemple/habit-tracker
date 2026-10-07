@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { periodRange, toLocalDate } from "./dates"
-import { exceptionsForTask, periodHistory, periodStatus, streak, summarize, targetFor, type TaskContext } from "./status"
+import { exceptionsForTask, overview, periodHistory, periodStatus, streak, summarize, targetFor, type TaskContext } from "./status"
 import {
   DEFAULT_SETTINGS,
   type Period,
@@ -122,6 +122,13 @@ describe("periodStatus", () => {
   it("applies negative correction events", () => {
     const c = ctx({ task: task("accumulate"), targets: [target("day", 10)], events: [ev(TODAY, 10), ev(TODAY, -5)] })
     expect(periodStatus(c, TODAY, TODAY).actual).toBe(5)
+  })
+
+  it("shows a negative total when a correction outlives the entry it corrected", () => {
+    // +10, then −10, then the +10 is deleted.
+    const c = ctx({ task: task("accumulate"), targets: [target("day", 100)], events: [ev(TODAY, 10, true), ev(TODAY, -10)] })
+    expect(periodStatus(c, TODAY, TODAY).actual).toBe(-10)
+    expect(summarize(c, TODAY).today).toBe(-10)
   })
 
   it("marks past accumulate periods below goal as failed", () => {
@@ -280,5 +287,28 @@ describe("summarize / history", () => {
   it("lists periods back to creation", () => {
     const c = ctx({ task: task("accumulate", "2026-10-05T08:00:00"), targets: [target("day", 1)] })
     expect(periodHistory(c, TODAY, 30).map((p) => p.range.start)).toEqual(["2026-10-07", "2026-10-06", "2026-10-05"])
+  })
+})
+
+describe("overview", () => {
+  const status = (type: TaskType, goal: number | null, actual: number, state: "open" | "success" | "failure" | "excused") => ({
+    task: task(type),
+    current: { period: "day" as const, range: { start: TODAY, end: TODAY }, target: null, goal, carried: 0, actual, excusedDays: 0, state },
+  })
+
+  it("averages accumulate fractions and counts limits within their allowance as done", () => {
+    const o = overview([
+      status("accumulate", 100, 50, "open"),
+      status("accumulate", 1, 1, "success"),
+      status("limit", 3, 1, "open"),
+      status("limit", 0, 1, "failure"),
+      status("track", null, 1, "success"),
+      status("accumulate", 0, 0, "excused"),
+    ])
+    expect(o).toEqual({ progress: (0.5 + 1 + 1 + 0) / 4, done: 2, remaining: 1, over: 1, counted: 4, excused: 1 })
+  })
+
+  it("does not let negative totals subtract from overall progress", () => {
+    expect(overview([status("accumulate", 10, -5, "open")]).progress).toBe(0)
   })
 })

@@ -3,9 +3,10 @@ import { ChevronDownIcon, PlusIcon, SparklesIcon } from "lucide-react"
 import { useState } from "react"
 import { AmountDialog } from "@/components/AmountDialog"
 import { CategoryChip } from "@/components/CategoryChip"
+import { DailyOverview } from "@/components/DailyOverview"
 import { TaskCard } from "@/components/TaskCard"
 import { TaskDetail } from "@/components/TaskDetail"
-import { TaskEditor } from "@/components/TaskEditor"
+import { TaskEditor, type EditorTarget } from "@/components/TaskEditor"
 import { Button } from "@/components/ui/button"
 import { seedExamples } from "@/db/seed"
 import { parseLocalDate } from "@/domain/dates"
@@ -18,16 +19,16 @@ export function TasksPage() {
   const [showRetired, setShowRetired] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [amountId, setAmountId] = useState<string | null>(null)
-  const [editorId, setEditorId] = useState<string | null>(null)
+  const [editor, setEditor] = useState<EditorTarget | null>(null)
 
   const visible = tasks.filter((t) => !filter || t.categories.some((c) => c.id === filter))
   const active = visible.filter((t) => !t.task.retiredAt)
   const retired = visible.filter((t) => t.task.retiredAt)
   const find = (id: string | null) => tasks.find((t) => t.task.id === id) ?? null
 
-  const openEditor = (id: string) => {
+  const openEditor = (target: EditorTarget) => {
     setDetailId(null)
-    setEditorId(id)
+    setEditor(target)
   }
 
   return (
@@ -37,10 +38,12 @@ export function TasksPage() {
           <p className="text-sm text-muted-foreground">{format(parseLocalDate(today), "EEEE, MMMM d")}</p>
           <h1 className="text-2xl font-semibold">Tasks</h1>
         </div>
-        <Button size="icon-lg" className="size-10 rounded-full" onClick={() => setEditorId("new")} aria-label="New task">
+        <Button size="icon-lg" className="size-10 rounded-full" onClick={() => openEditor({ mode: "new" })} aria-label="New task">
           <PlusIcon className="size-5" />
         </Button>
       </header>
+
+      <DailyOverview tasks={active} />
 
       {categories.length > 0 && (
         <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
@@ -70,7 +73,7 @@ export function TasksPage() {
         <div className="mt-10 flex flex-col items-center gap-3 text-center text-muted-foreground">
           <p>No tasks yet.</p>
           <div className="flex gap-2">
-            <Button onClick={() => setEditorId("new")}>
+            <Button onClick={() => openEditor({ mode: "new" })}>
               <PlusIcon /> New task
             </Button>
             <Button variant="outline" onClick={seedExamples}>
@@ -85,8 +88,10 @@ export function TasksPage() {
           key={view.task.id}
           view={view}
           onOpen={() => setDetailId(view.task.id)}
-          onEdit={openEditor}
+          onEdit={() => openEditor({ mode: "edit", taskId: view.task.id })}
+          onCopy={() => openEditor({ mode: "copy", taskId: view.task.id })}
           onCustomAmount={() => setAmountId(view.task.id)}
+          today={today}
         />
       ))}
 
@@ -106,16 +111,23 @@ export function TasksPage() {
                 key={view.task.id}
                 view={view}
                 onOpen={() => setDetailId(view.task.id)}
-                onEdit={openEditor}
+                onEdit={() => openEditor({ mode: "edit", taskId: view.task.id })}
+                onCopy={() => openEditor({ mode: "copy", taskId: view.task.id })}
                 onCustomAmount={() => setAmountId(view.task.id)}
+                today={today}
               />
             ))}
         </>
       )}
 
-      <TaskDetail view={find(detailId)} today={today} onClose={() => setDetailId(null)} onEdit={openEditor} />
+      <TaskDetail
+        view={find(detailId)}
+        today={today}
+        onClose={() => setDetailId(null)}
+        onEdit={(taskId) => openEditor({ mode: "edit", taskId })}
+      />
       <AmountDialog view={find(amountId)} onClose={() => setAmountId(null)} />
-      <TaskEditor taskId={editorId} onClose={() => setEditorId(null)} />
+      <TaskEditor target={editor} onClose={() => setEditor(null)} />
     </div>
   )
 }

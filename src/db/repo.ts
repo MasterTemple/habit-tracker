@@ -167,12 +167,19 @@ export async function taskToInput(id: string): Promise<TaskInput> {
   }
 }
 
-/** Retires a task and creates a copy (linked by createdFromId), returning the copy's id. */
-export async function copyAndRetire(id: string, changes: Partial<TaskInput> = {}): Promise<string> {
-  const input = { ...(await taskToInput(id)), ...changes }
-  const newId = await createTask(input, id)
-  await retireTask(id)
-  return newId
+/**
+ * Creates a modified copy of a task (linked by createdFromId) and retires the
+ * original in one step, returning the copy's id. Unlike edits, the copy may change type.
+ */
+export async function copyAndRetire(id: string, input: TaskInput): Promise<string> {
+  const original = await db.tasks.get(id)
+  if (!original) throw new Error(`Task ${id} not found`)
+  if (original.retiredAt) throw new Error("Can't copy and retire a task that is already retired")
+  return db.transaction("rw", [db.tasks, db.targets, db.taskCategories, db.settings], async () => {
+    const newId = await createTask(input, id)
+    await retireTask(id)
+    return newId
+  })
 }
 
 export async function moveTask(id: string, direction: -1 | 1) {
@@ -232,6 +239,17 @@ export async function createCategory(name: string, color: string): Promise<strin
 
 export async function updateCategory(id: string, changes: Partial<Pick<Category, "name" | "color">>) {
   await db.categories.update(id, { ...changes, updatedAt: now() })
+}
+
+export async function moveCategory(id: string, direction: -1 | 1) {
+  const categories = (await db.categories.orderBy("sortOrder").toArray()).filter((c) => !c.deletedAt)
+  const index = categories.findIndex((c) => c.id === id)
+  const other = categories[index + direction]
+  if (index < 0 || !other) return
+  await db.transaction("rw", db.categories, async () => {
+    await db.categories.update(id, { sortOrder: other.sortOrder, updatedAt: now() })
+    await db.categories.update(other.id, { sortOrder: categories[index].sortOrder, updatedAt: now() })
+  })
 }
 
 export async function deleteCategory(id: string) {

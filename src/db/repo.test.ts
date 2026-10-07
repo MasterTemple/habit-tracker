@@ -9,6 +9,7 @@ import {
   deleteEvent,
   exportData,
   importData,
+  moveCategory,
   recordEvent,
   taskToInput,
   updateTask,
@@ -61,10 +62,27 @@ describe("repo", () => {
 
   it("copies and retires", async () => {
     const id = await createTask(input)
-    const copy = await copyAndRetire(id, { amount: 200 })
+    const copy = await copyAndRetire(id, { ...input, type: "limit", amount: 200 })
     expect((await db.tasks.get(id))?.retiredAt).not.toBeNull()
     expect((await db.tasks.get(copy))?.createdFromId).toBe(id)
     expect((await taskToInput(copy)).amount).toBe(200)
+    expect((await db.tasks.get(copy))?.type).toBe("limit")
+  })
+
+  it("refuses to copy and retire a retired task", async () => {
+    const id = await createTask(input)
+    await copyAndRetire(id, input)
+    await expect(copyAndRetire(id, input)).rejects.toThrow(/already retired/)
+    expect(await db.tasks.count()).toBe(2)
+  })
+
+  it("reorders categories", async () => {
+    const a = await createCategory("A", "#000")
+    const b = await createCategory("B", "#000")
+    await moveCategory(b, -1)
+    expect((await db.categories.orderBy("sortOrder").toArray()).map((c) => c.id)).toEqual([b, a])
+    await moveCategory(b, -1) // already first: no-op
+    expect((await db.categories.orderBy("sortOrder").toArray()).map((c) => c.id)).toEqual([b, a])
   })
 
   it("unlinks a deleted category from tasks", async () => {

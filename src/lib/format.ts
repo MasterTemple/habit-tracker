@@ -29,13 +29,14 @@ export function displayValue(task: Task, summary: TaskSummary): string {
     case "total":
       return `${summary.total.toLocaleString()} total`
     case "period":
-      if (current.goal === null) return `${current.actual} ${PERIOD_LABEL[current.period]}`
+      if (current.goal === null || current.state === "excused") return `${current.actual} ${PERIOD_LABEL[current.period]}`
       return `${current.actual} / ${current.goal} ${PERIOD_LABEL[current.period]}`
   }
 }
 
 export function statusText(task: Task, status: PeriodStatus): string {
   if (status.state === "excused") return "Excused"
+  if (status.actual < 0) return "Negative — check history"
   if (task.type === "track") return status.actual > 0 ? "Done" : ""
   if (status.goal === null) return ""
   if (task.type === "accumulate") {
@@ -44,12 +45,13 @@ export function statusText(task: Task, status: PeriodStatus): string {
     return `${status.goal - status.actual} left`
   }
   if (status.actual > status.goal) return `Over by ${status.actual - status.goal}`
-  return status.goal - status.actual === 0 ? "At limit" : `${status.goal - status.actual} left`
+  if (status.goal - status.actual > 0) return `${status.goal - status.actual} left`
+  return status.goal === 0 ? "On track" : "At limit"
 }
 
 export function progressPercent(status: PeriodStatus): number {
   if (status.state === "excused") return 100
   if (status.goal === null) return status.actual > 0 ? 100 : 0
   if (status.goal === 0) return status.actual > 0 ? 100 : 0
-  return Math.min(100, (status.actual / status.goal) * 100)
+  return Math.min(100, Math.max(0, (status.actual / status.goal) * 100))
 }

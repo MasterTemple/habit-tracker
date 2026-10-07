@@ -10,6 +10,7 @@ import {
   MinusIcon,
   PencilIcon,
   SlidersHorizontalIcon,
+  TreePalmIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -22,8 +23,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
-import { copyAndRetire, moveTask, recordEvent, retireTask, unretireTask } from "@/db/repo"
-import { isCheckbox } from "@/domain/status"
+import { moveTask, recordEvent, retireTask, unretireTask } from "@/db/repo"
+import { isCheckbox, isExcused } from "@/domain/status"
 import type { TaskView } from "@/hooks/useAppData"
 import { displayValue, progressPercent, statusText } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -33,17 +34,21 @@ import { CategoryChip } from "./CategoryChip"
 interface Props {
   view: TaskView
   onOpen: () => void
-  onEdit: (taskId: string) => void
+  onEdit: () => void
+  onCopy: () => void
   onCustomAmount: () => void
+  today: string
 }
 
-export function TaskCard({ view, onOpen, onEdit, onCustomAmount }: Props) {
-  const { task, target, categories, summary } = view
+export function TaskCard({ view, onOpen, onEdit, onCopy, onCustomAmount, today }: Props) {
+  const { task, target, categories, summary, ctx } = view
   const { current } = summary
   const retired = !!task.retiredAt
   const checkbox = isCheckbox(task, target)
   const step = task.incrementAmounts[0] ?? 1
   const failed = current.state === "failure"
+  const negative = current.actual < 0
+  const onBreak = isExcused(today, ctx.exceptions)
 
   const record = (amount: number) => recordEvent(task.id, amount)
 
@@ -68,10 +73,20 @@ export function TaskCard({ view, onOpen, onEdit, onCustomAmount }: Props) {
               </div>
             )}
             <div className="truncate font-medium">{task.name}</div>
-            {summary.streak > 1 && (
-              <div className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                <FlameIcon className="size-3 text-orange-500" />
-                {summary.streak}
+            {(summary.streak > 1 || onBreak) && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {summary.streak > 1 && (
+                  <span className="flex items-center gap-0.5">
+                    <FlameIcon className="size-3 text-orange-500" />
+                    {summary.streak}
+                  </span>
+                )}
+                {onBreak && (
+                  <span className="flex items-center gap-0.5">
+                    <TreePalmIcon className="size-3" />
+                    On break
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -120,7 +135,7 @@ export function TaskCard({ view, onOpen, onEdit, onCustomAmount }: Props) {
               <DropdownMenuItem onSelect={onOpen}>
                 <HistoryIcon /> History
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onEdit(task.id)}>
+              <DropdownMenuItem onSelect={onEdit}>
                 <PencilIcon /> Edit
               </DropdownMenuItem>
               {!retired && (
@@ -134,15 +149,11 @@ export function TaskCard({ view, onOpen, onEdit, onCustomAmount }: Props) {
                 </>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={async () => {
-                  const id = await copyAndRetire(task.id)
-                  toast.success(`Retired “${task.name}” and created a copy`)
-                  onEdit(id)
-                }}
-              >
-                <CopyIcon /> Copy &amp; retire
-              </DropdownMenuItem>
+              {!retired && (
+                <DropdownMenuItem onSelect={onCopy}>
+                  <CopyIcon /> Copy &amp; retire…
+                </DropdownMenuItem>
+              )}
               {retired ? (
                 <DropdownMenuItem onSelect={() => unretireTask(task.id)}>
                   <ArchiveRestoreIcon /> Unretire
@@ -172,8 +183,8 @@ export function TaskCard({ view, onOpen, onEdit, onCustomAmount }: Props) {
           style={{ "--bar": failed ? "var(--destructive)" : task.color } as React.CSSProperties}
         />
         <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-          <span>{displayValue(task, summary)}</span>
-          <span className={cn(failed && "font-medium text-destructive")}>{statusText(task, current)}</span>
+          <span className={cn(negative && "font-medium text-destructive")}>{displayValue(task, summary)}</span>
+          <span className={cn((failed || negative) && "font-medium text-destructive")}>{statusText(task, current)}</span>
         </div>
       </div>
     </div>

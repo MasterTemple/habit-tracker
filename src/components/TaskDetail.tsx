@@ -83,7 +83,8 @@ function Detail({ view, today, onEdit }: { view: TaskView; today: string; onEdit
 
         {showBreak && (
           <ExceptionForm
-            fixedScope={{ scopeType: "task", scopeId: task.id }}
+            defaultScope={{ scopeType: "task", scopeId: task.id }}
+            suggestedCategoryIds={view.categories.map((c) => c.id)}
             onDone={() => setShowBreak(false)}
           />
         )}
@@ -96,13 +97,16 @@ function Detail({ view, today, onEdit }: { view: TaskView; today: string; onEdit
                 <span>
                   {e.startDate} → {e.endDate}
                   {e.description && <span className="text-muted-foreground"> · {e.description}</span>}
-                  {e.scopeType !== "task" && <span className="text-muted-foreground"> ({e.scopeType})</span>}
+                  {e.scopeType !== "task" && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      ({e.scopeType === "all" ? "all tasks" : view.categories.find((c) => c.id === e.scopeId)?.name})
+                    </span>
+                  )}
                 </span>
-                {e.scopeType === "task" && (
-                  <Button variant="ghost" size="icon-sm" onClick={() => deleteException(e.id)} aria-label="Remove break">
-                    <Trash2Icon />
-                  </Button>
-                )}
+                <Button variant="ghost" size="icon-sm" onClick={() => deleteException(e.id)} aria-label="Remove break">
+                  <Trash2Icon />
+                </Button>
               </div>
             ))}
           </div>

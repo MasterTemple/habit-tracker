@@ -8,18 +8,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { createCategory, createTask, taskToInput, updateTask, type TaskInput } from "@/db/repo"
+import { copyAndRetire, createCategory, createTask, taskToInput, updateTask, type TaskInput } from "@/db/repo"
 import type { DisplayMode, Period, TaskType } from "@/domain/types"
 import { useAppData } from "@/hooks/useAppData"
-import { COLORS, TASK_ICONS } from "@/lib/icons"
+import { COLORS } from "@/lib/icons"
 import { cn } from "@/lib/utils"
 import { CategoryChip } from "./CategoryChip"
+import { ColorPicker } from "./ColorPicker"
+import { IconPicker } from "./IconPicker"
+
+export type EditorTarget =
+  | { mode: "new" }
+  | { mode: "edit"; taskId: string }
+  /** Prefilled from the task; nothing changes until saved, which creates the copy and retires the original. */
+  | { mode: "copy"; taskId: string }
 
 interface Props {
-  /** "new" to create, a task id to edit, or null when closed. */
-  taskId: string | null
+  /** null when closed. */
+  target: EditorTarget | null
   onClose: () => void
 }
+
+const TITLES = { new: "New task", edit: "Edit task", copy: "Copy & retire" }
 
 const TYPES: { value: TaskType; label: string; hint: string }[] = [
   { value: "accumulate", label: "Do", hint: "Reach at least N per period" },
@@ -51,28 +61,33 @@ function parseAmounts(text: string): number[] {
   return amounts.length > 0 ? [...new Set(amounts)] : [1]
 }
 
-export function TaskEditor({ taskId, onClose }: Props) {
+export function TaskEditor({ target, onClose }: Props) {
   const { settings, categories } = useAppData()
   const [input, setInput] = useState<TaskInput | null>(null)
   const [amountsText, setAmountsText] = useState("1")
   const [newCategory, setNewCategory] = useState("")
-  const isNew = taskId === "new"
+  const mode = target?.mode ?? "new"
+  const isNew = mode === "new"
+  const typeLocked = mode === "edit"
+  const [originalName, setOriginalName] = useState("")
 
   useEffect(() => {
-    if (!taskId) return
+    if (!target) return
     let cancelled = false
-    const load = isNew ? Promise.resolve(emptyInput(settings.carryOverDefault)) : taskToInput(taskId)
+    setInput(null)
+    const load = target.mode === "new" ? Promise.resolve(emptyInput(settings.carryOverDefault)) : taskToInput(target.taskId)
     load.then((loaded) => {
       if (cancelled) return
       setInput(loaded)
+      setOriginalName(loaded.name)
       setAmountsText(loaded.incrementAmounts.join(", "))
     })
     return () => {
       cancelled = true
     }
-    // Only reload when a different task is opened.
+    // Only reload when the editor is opened for something else.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId])
+  }, [target])
 
   const set = (changes: Partial<TaskInput>) => setInput((prev) => (prev ? { ...prev, ...changes } : prev))
 
@@ -93,23 +108,33 @@ export function TaskEditor({ taskId, onClose }: Props) {
   }
 
   const save = async () => {
-    if (!input || !taskId) return
+    if (!input || !target) return
     if (!input.name.trim()) {
       toast.error("Give the task a name")
       return
     }
     const final = { ...input, name: input.name.trim(), incrementAmounts: parseAmounts(amountsText) }
-    if (isNew) await createTask(final)
-    else await updateTask(taskId, final)
+    if (target.mode === "new") await createTask(final)
+    else if (target.mode === "edit") await updateTask(target.taskId, final)
+    else {
+      await copyAndRetire(target.taskId, final)
+      toast.success(`Retired “${originalName}” and created “${final.name}”`)
+    }
     onClose()
   }
 
   return (
-    <Sheet open={!!taskId} onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={!!target} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="bottom" className="mx-auto max-h-[92dvh] max-w-lg overflow-y-auto rounded-t-2xl">
         <SheetHeader>
-          <SheetTitle>{isNew ? "New task" : "Edit task"}</SheetTitle>
-          <SheetDescription className="sr-only">Task settings</SheetDescription>
+          <SheetTitle>{TITLES[mode]}</SheetTitle>
+          {mode === "copy" ? (
+            <SheetDescription>
+              Saving creates this new task and retires “{originalName}” (its history is kept). Close to cancel.
+            </SheetDescription>
+          ) : (
+            <SheetDescription className="sr-only">Task settings</SheetDescription>
+          )}
         </SheetHeader>
 
         {input && (
@@ -132,12 +157,12 @@ export function TaskEditor({ taskId, onClose }: Props) {
                   <button
                     key={t.value}
                     type="button"
-                    disabled={!isNew}
+                    disabled={typeLocked}
                     onClick={() => set({ type: t.value })}
                     className={cn(
                       "rounded-md py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed",
                       input.type === t.value ? "bg-background shadow-sm" : "text-muted-foreground",
-                      !isNew && input.type !== t.value && "opacity-40",
+                      typeLocked && input.type !== t.value && "opacity-40",
                     )}
                   >
                     {t.label}
@@ -145,9 +170,9 @@ export function TaskEditor({ taskId, onClose }: Props) {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                {isNew
-                  ? TYPES.find((t) => t.value === input.type)?.hint
-                  : "The type can't change. Use “Copy & retire” to make a modified version."}
+                {typeLocked
+                  ? "The type can't change. Use “Copy & retire” to make a modified version."
+                  : TYPES.find((t) => t.value === input.type)?.hint}
               </p>
             </div>
 
@@ -177,7 +202,7 @@ export function TaskEditor({ taskId, onClose }: Props) {
                       </SelectContent>
                     </Select>
                   </div>
-                  {!isNew && (
+                  {mode === "edit" && (
                     <p className="text-xs text-muted-foreground">
                       Goal changes apply from the start of the current period; earlier history keeps the old goal.
                     </p>
@@ -255,42 +280,13 @@ export function TaskEditor({ taskId, onClose }: Props) {
             </div>
 
             <div className="grid gap-1.5">
-              <Label>Icon</Label>
-              <div className="grid grid-cols-8 gap-1">
-                {Object.entries(TASK_ICONS).map(([name, Icon]) => (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => set({ icon: name })}
-                    className={cn(
-                      "flex aspect-square items-center justify-center rounded-md border",
-                      input.icon === name ? "border-foreground bg-muted" : "border-transparent",
-                    )}
-                    aria-label={name}
-                  >
-                    <Icon className="size-5" style={{ color: input.color }} />
-                  </button>
-                ))}
-              </div>
+              <Label>Color</Label>
+              <ColorPicker value={input.color} onChange={(color) => set({ color })} />
             </div>
 
             <div className="grid gap-1.5">
-              <Label>Color</Label>
-              <div className="flex flex-wrap gap-2">
-                {COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => set({ color })}
-                    className={cn(
-                      "size-8 rounded-full ring-offset-2 ring-offset-background",
-                      input.color === color && "ring-2 ring-foreground",
-                    )}
-                    style={{ backgroundColor: color }}
-                    aria-label={color}
-                  />
-                ))}
-              </div>
+              <Label>Icon</Label>
+              <IconPicker value={input.icon} color={input.color} onChange={(icon) => set({ icon })} />
             </div>
 
             <div className="grid gap-1.5">
@@ -304,7 +300,7 @@ export function TaskEditor({ taskId, onClose }: Props) {
             </div>
 
             <Button size="lg" className="h-11" onClick={save}>
-              {isNew ? "Create task" : "Save"}
+              {{ new: "Create task", edit: "Save", copy: "Create copy & retire original" }[mode]}
             </Button>
           </div>
         )}
